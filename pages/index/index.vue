@@ -26,6 +26,7 @@
 			<view class="hero">
 				<text class="hero-date">{{ viewDate }}</text>
 				<text class="hero-title">{{ heroTitle }}</text>
+				<text class="hero-jl" v-if="jlLine">{{ jlLine }}</text>
 				<text class="hero-source">数据来源：@今天游离翻车了吗</text>
 				<text class="hero-updated" v-if="isToday && updatedAt">更新于 {{ updatedAt }}</text>
 			</view>
@@ -132,6 +133,7 @@
 							class="sheet-img"
 							:src="cal.url"
 							mode="widthFix"
+							referrerpolicy="no-referrer"
 							@click="previewCalendar"
 							@error="onCalImgError"
 						></image>
@@ -272,6 +274,10 @@ export default {
 			// -------- 页面数据 --------
 			loading: false,
 			tasks: [],
+			// 季蜡所在位置（来自 /sky/sc/lzwz 的 jlwz.text，如「雨林1」）
+			// 该接口只支持 key 一个参数，没有明日数据，所以 jlTomorrow 预留但不填充
+			jlToday: '',
+			jlTomorrow: '',
 			posterUrl: '',
 			posterError: false,
 			posterLoading: true,
@@ -341,6 +347,13 @@ export default {
 		heroTitle() {
 			if (this.dayOffset === 0) return '今日任务';
 			return this.dayOffset === -1 ? '昨日任务' : '明日任务';
+		},
+
+		// 标题下方的季蜡提示：有数据才显示；明天接口给不了就自动隐藏，不报错
+		jlLine() {
+			if (this.dayOffset === 0 && this.jlToday) return '今日季蜡：' + this.jlToday;
+			if (this.dayOffset === 1 && this.jlTomorrow) return '明日季蜡：' + this.jlTomorrow;
+			return '';
 		},
 
 		displayTasks() {
@@ -432,6 +445,7 @@ export default {
 			this.fetchTasks();
 			this.fetchPoster();
 			this.fetchTomorrow(); // 顺带把明天也拿到，点「明天」不用等
+			this.fetchJinLa(); // 标题下方的「今日季蜡」
 		}
 
 		// #ifdef H5
@@ -467,6 +481,7 @@ export default {
 		if (dayChanged || tooOld) {
 			this.fetchTasks(false, true);
 			this.fetchPoster(false, true);
+			this.fetchJinLa();
 		}
 	},
 
@@ -785,6 +800,7 @@ export default {
 			// 下拉刷新：两个接口同时重新拉取
 			this.fetchTasks(true);
 			this.fetchPoster(true);
+			this.fetchJinLa();
 		},
 
 		/* ---------------- 真实接口 ---------------- */
@@ -815,11 +831,14 @@ export default {
 
 					if (Array.isArray(rw) && rw.length) {
 						// 返回数据在 rw 数组的 text 字段
-						this.tasks = rw.map((item, i) => ({
-							id: i + 1,
-							text: item.text || '',
-							from: item.type || '每日任务'
-						}));
+						// 第 5 项「今日季节蜡烛所在地图」不再占任务位，改到标题下方单独展示
+						this.tasks = rw
+							.map((item, i) => ({
+								id: i + 1,
+								text: item.text || '',
+								from: item.type || '每日任务'
+							}))
+							.filter(t => !/季节蜡烛|季蜡/.test(t.text));
 						this.updatedAt = this.nowText();
 						// 存档一份，供以后「昨天」回看
 						this.saveArchive();
@@ -838,6 +857,35 @@ export default {
 					if (isPullDown) uni.stopPullDownRefresh();
 				}
 			});
+		},
+
+		/* ---------------- 季蜡位置（标题下方一行小字） ----------------
+		 * /sky/sc/lzwz → { jlwz:{ text:'雨林1' } }，格式化成「雨林（图1）」
+		 * 文档里该接口只有 key 一个参数、没有明日数据，
+		 * 所以只取今天；切到明天时 jlTomorrow 为空，标题下自动不显示，不报错。
+		 */
+		fetchJinLa() {
+			uni.request({
+				url: API_BASE + '/sky/sc/lzwz',
+				method: 'GET',
+				data: { key: this.apiKey, type: 'json' },
+				timeout: 10000,
+				success: res => {
+					const body = this.safeJson(res && res.data) || {};
+					const raw = body.jlwz && body.jlwz.text ? String(body.jlwz.text).trim() : '';
+					this.jlToday = this.formatJl(raw);
+				},
+				fail: () => {
+					// 静默失败：标题下不显示这一行，任务列表照常
+				}
+			});
+		},
+
+		formatJl(raw) {
+			if (!raw) return '';
+			const m = /^(.+?)(\d+)$/.exec(raw);
+			if (m) return m[1].trim() + '（图' + m[2] + '）';
+			return raw;
 		},
 
 		/* ---------------- 攻略图片接口（独立请求） ----------------
@@ -1120,10 +1168,12 @@ export default {
 			c.err = '';
 			c.url = '';
 			c.status = 'loading';
+			// 关键：必须带 type=json，否则接口 302 跳到 v.t1qq.com（该域名没有 CORS 头），
+			// 浏览器 XHR 跟随重定向会被拦，直接走 fail → 「网络异常」
 			uni.request({
 				url: API_BASE + '/sky/sc/hdrl',
 				method: 'GET',
-				data: { key: this.apiKey },
+				data: { key: this.apiKey, type: 'json' },
 				timeout: 12000,
 				success: res => {
 					const body = this.safeJson(res && res.data) || {};
@@ -1134,14 +1184,20 @@ export default {
 						c.status = 'ok';
 						return;
 					}
-					c.status = 'error';
-					c.err = '日历加载失败，请重试';
+					// 接口回了 200 但没有 img：退回图片直连（<image> 不需要 CORS）
+					c.url = this.calendarImgUrl();
+					c.status = 'ok';
 				},
 				fail: () => {
-					c.status = 'error';
-					c.err = '网络异常，请重试';
+					// 网络层失败也别空着：直接用 type=img 的图片地址兜底
+					c.url = this.calendarImgUrl();
+					c.status = 'ok';
 				}
 			});
+		},
+
+		calendarImgUrl() {
+			return API_BASE + '/sky/sc/hdrl?key=' + this.apiKey + '&type=img';
 		},
 
 		onCalImgError() {
@@ -1624,6 +1680,17 @@ export default {
 	letter-spacing: 4rpx;
 	line-height: 1.24;
 	color: var(--text);
+	transition: color 0.45s;
+}
+
+/* 标题下方：今日季蜡一行（比标题小一号） */
+.hero-jl {
+	display: block;
+	margin-top: 10rpx;
+	font-size: 26rpx;
+	letter-spacing: 1rpx;
+	line-height: 1.4;
+	color: var(--text-soft, var(--text-faint));
 	transition: color 0.45s;
 }
 
