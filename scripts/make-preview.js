@@ -25,6 +25,14 @@ const tasks = [
 	'今日季节蜡烛所在地图：雨林'
 ];
 
+// 更多攻略的四张卡片（静态示意，状态覆盖：正常 / 已结束）
+const guides = [
+	{ mark: '蜡', name: '季蜡位置', desc: '季蜡 雨林1 · 大蜡 霞谷1' },
+	{ mark: '石', name: '红石天气', desc: '今日天气 + 红石碎片' },
+	{ mark: '祖', name: '复刻先祖', desc: '本期已结束', off: true },
+	{ mark: '魔', name: '免费魔法', desc: '烟花魔法' }
+];
+
 function card(theme, title, sub) {
 	const list = tasks
 		.map(
@@ -63,6 +71,12 @@ function card(theme, title, sub) {
 				<div class="glass list">${list}</div>
 				<div class="section"><span class="section-title">今日攻略图</span><span class="section-hint">点击放大</span></div>
 				<div class="glass poster-card"><div class="poster-fallback"><span class="fallback-text">${sub}</span></div></div>
+				<div class="section"><span class="section-title">更多攻略</span><span class="section-hint">左右滑动</span></div>
+				<div class="guide-strip">
+					${guides.map(g =>
+						`<div class="guide-card ${g.off ? 'guide-closed' : ''}"><div class="guide-mark"><span class="guide-mark-txt">${g.mark}</span></div><span class="guide-name">${g.name}</span><span class="guide-desc">${g.desc}</span></div>`
+					).join('')}
+				</div>
 				<div class="primary-btn"><span class="primary-txt">一键复制任务</span></div>
 				<span class="footer">SKY · 每日任务</span>
 			</div>
@@ -90,7 +104,7 @@ ${css}
 	.wrap { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
 	.phone {
 		width: 375px;
-		height: 760px;
+		height: 1000px;
 		border-radius: 40px;
 		overflow: hidden;
 		position: relative;
@@ -117,7 +131,7 @@ ${css}
 </style>
 </head>
 <body>
-	<div class="cap">下面用的是构建产物里的真实 CSS（含 backdrop-filter 毛玻璃）。<br />点一下「昨天 / 今天 / 明天」，可以看滑块的弹簧滑动 + 拉伸效果。</div>
+	<div class="cap">下面用的是构建产物里的真实 CSS（含 backdrop-filter 毛玻璃）。<br />点一下「昨天 / 今天 / 明天」，可以看滑块的弹簧滑动 + 拉伸效果。<br />页面底部新增「更多攻略」横滑卡片（第一屏右滑可见）。</div>
 	<div class="wrap">
 		${card('theme-dark', '今日任务', '长图加载中…')}
 		${card('theme-light', '今日任务', '长图加载中…')}

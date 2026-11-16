@@ -81,7 +81,61 @@
 				</view>
 			</view>
 
+			<!-- 更多攻略：横向卡片 + 共用一个查看弹层（仅 H5） -->
+			<!-- #ifdef H5 -->
+			<view class="section" v-if="isToday">
+				<text class="section-title">更多攻略</text>
+				<text class="section-hint">左右滑动</text>
+			</view>
+
+			<view v-if="isToday" class="guide-strip">
+				<view
+					class="guide-card"
+					:class="'guide-' + g.status"
+					v-for="(g, i) in guides"
+					:key="g.key"
+					@click="openGuide(i)"
+				>
+					<view class="guide-mark"><text class="guide-mark-txt">{{ g.mark }}</text></view>
+					<text class="guide-name">{{ g.name }}</text>
+					<text class="guide-desc">{{ guideCardDesc(g) }}</text>
+				</view>
+			</view>
+
+			<view class="sheet-mask" v-if="guideOpen" @click="closeGuide">
+				<view class="sheet glass" @click.stop>
+					<view class="sheet-head">
+						<text class="sheet-title">{{ activeGuide.name }}</text>
+						<view class="sheet-close" @click="closeGuide">
+							<text class="sheet-close-txt">关闭</text>
+						</view>
+					</view>
+
+					<view class="sheet-body">
+						<image
+							v-if="activeGuide.url && activeGuide.status !== 'error'"
+							class="sheet-img"
+							:src="activeGuide.url"
+							mode="widthFix"
+							@load="onGuideImgLoad(guideActive)"
+							@click="previewGuide"
+							@error="onGuideImgError(guideActive)"
+						></image>
+						<view class="sheet-fallback" v-else>
+							<text class="fallback-text">{{ guideFallbackText }}</text>
+							<view class="retry-btn" v-if="guideCanRetry" @click.stop="loadGuide(guideActive)">
+								<text class="retry-txt">重新加载</text>
+							</view>
+						</view>
+					</view>
+
+					<text class="sheet-tip" v-if="activeGuide.status === 'ok'">点击图片可全屏查看</text>
+				</view>
+			</view>
+			<!-- #endif -->
+
 			<!-- 主按钮 -->
+
 			<view class="primary-btn" hover-class="primary-btn-active" :hover-stay-time="80" @click="copyTasks">
 				<text class="primary-txt">一键复制任务</text>
 			</view>
@@ -120,10 +174,31 @@ const MR_API = 'https://api.qmkjcm.cn/api/gy_mr_rw/';
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 18;
 
+
 // 接口基地址：
 //  · 有反向代理的环境（Vercel 的 rewrites / 本地 vite proxy）→ 相对路径 /api
 //  · 纯静态托管（GitHub Pages 没有代理）→ 构建时注入绝对地址 https://api.t1qq.com/api
 const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
+
+/**
+ * 更多攻略（季蜡 / 红石天气 / 复刻先祖 / 免费魔法）
+ * ------------------------------------------------------------------
+ * 四个功能全部复用 t1qq 现有的 key，实测均可直接取：
+ *  · jl（季蜡位置）  img: /sky/sc/scjl   → JPEG 1200x750 位置图
+ *                    text:/sky/sc/lzwz   → { jlwz:{text:'雨林1'}, dlwz:{text:'霞谷1'} }
+ *  · hs（红石天气）  json:/sky/gytq      → { data:[jpg, gif] } 第一张是天气表，gif 是贴纸（需过滤）
+ *  · fk（复刻先祖）  img: /sky/sc/scfk   → JPEG 2340x1080；休赛期返回「已结束」白底占位图，
+ *                    接口无状态字段，只能靠图片特征（近白且无色）判定，见 detectEndedPoster()
+ *  · mf（免费魔法）  img: /sky/mf/magic  → JPEG 900x600 魔法图
+ *                    text:/sky/mf/mf     → { mf:'今日免费魔法', magic:[{text:'烟花魔法'}] }
+ */
+const GUIDE_API = {
+	jl: { img: API_BASE + '/sky/sc/scjl', text: API_BASE + '/sky/sc/lzwz' },
+	hs: { json: API_BASE + '/sky/gytq' },
+	fk: { img: API_BASE + '/sky/sc/scfk' },
+	mf: { img: API_BASE + '/sky/mf/magic', text: API_BASE + '/sky/mf/mf' }
+};
+
 
 export default {
 	data() {
@@ -173,6 +248,18 @@ export default {
 			segIdx: 1, // 日=0 / 夜=1
 			segStretch: 0,
 			segLead: '0%',
+
+			// -------- 更多攻略（季蜡 / 红石 / 复刻先祖 / 免费魔法）--------
+			// status: idle 未加载 / loading 加载中 / ok 可看 / empty 今日无内容 /
+			//         closed 本期已结束（不可点） / error 失败可重试
+			guides: [
+				{ key: 'jl', name: '季蜡位置', mark: '蜡', desc: '', status: 'idle', url: '', err: '' },
+				{ key: 'hs', name: '红石天气', mark: '石', desc: '', status: 'idle', url: '', err: '' },
+				{ key: 'fk', name: '复刻先祖', mark: '祖', desc: '', status: 'idle', url: '', err: '' },
+				{ key: 'mf', name: '免费魔法', mark: '魔', desc: '', status: 'idle', url: '', err: '' }
+			],
+			guideActive: 0, // 弹层当前展示的项
+			guideOpen: false, // 弹层开关
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -228,7 +315,27 @@ export default {
 
 		segThumbStyle() {
 			return this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
+		},
+
+		// #ifdef H5
+		activeGuide() {
+			return this.guides[this.guideActive] || { name: '', desc: '', status: 'idle', url: '', err: '' };
+		},
+
+		// 弹层里的兜底文案：按状态给不同提示，不让用户看到空白
+		guideFallbackText() {
+			const g = this.activeGuide;
+			if (g.status === 'loading') return '正在加载…';
+			if (g.status === 'closed') return '本期复刻已结束，等待下次新复刻';
+			if (g.status === 'empty') return g.desc || '今日暂无内容';
+			if (g.status === 'error') return g.err || '加载失败，请重试';
+			return '点击查看';
+		},
+
+		guideCanRetry() {
+			return this.activeGuide.status === 'error';
 		}
+		// #endif
 	},
 
 	onLoad() {
@@ -261,6 +368,13 @@ export default {
 			this.fetchPoster();
 			this.fetchTomorrow(); // 顺带把明天也拿到，点「明天」不用等
 		}
+
+		// #ifdef H5
+		// 更多攻略的副标题（文字接口很小），静默预取，卡片上能直接显示内容
+		this.prefetchGuideTexts();
+		// 复刻先祖若处于休赛期，卡片直接标「本期已结束」
+		this.precheckEndedGuide();
+		// #endif
 	},
 
 	// 回到前台：①自动模式按当前时间重新判定主题 ②数据过期则静默重拉
@@ -793,7 +907,239 @@ export default {
 		todayText() {
 			const d = new Date();
 			return `${d.getFullYear()}-${this.pad(d.getMonth() + 1)}-${this.pad(d.getDate())}`;
+		},
+
+		// #ifdef H5
+		/* ---------------- 更多攻略：季蜡 / 红石天气 / 复刻先祖 / 免费魔法 ---------------- */
+		/* 卡片底部小字：跟着状态走，失败和无内容都能一眼看出原因 */
+		guideCardDesc(g) {
+			if (g.status === 'closed') return '本期已结束';
+			if (g.status === 'error') return '加载失败 · 点按重试';
+			if (g.status === 'empty') return g.desc || '今日暂无';
+			if (g.status === 'loading') return '加载中…';
+			return g.desc || '点击查看';
+		},
+
+		/* 打开弹层；失败过的会重新拉起 */
+		openGuide(i) {
+			const g = this.guides[i];
+			if (!g) return;
+			if (g.status === 'closed') {
+				uni.showToast({ title: '本期复刻已结束', icon: 'none' });
+				return;
+			}
+			this.guideActive = i;
+			this.guideOpen = true;
+			if (g.status === 'idle' || g.status === 'error' || g.status === 'empty') this.loadGuide(i);
+		},
+
+		closeGuide() {
+			this.guideOpen = false;
+		},
+
+		/* 加载第 i 项：图片类直接交给 <image>，JSON 类先取到图片地址 */
+		loadGuide(i) {
+			const g = this.guides[i];
+			if (!g) return;
+			const cfg = GUIDE_API[g.key];
+			if (!cfg) return;
+
+			g.err = '';
+			g.url = '';
+			g.loaded = false;
+			g.status = 'loading';
+
+			if (cfg.json) {
+				this.fetchGuideJson(i, cfg.json);
+				return;
+			}
+
+			const url = cfg.img + '?key=' + this.apiKey;
+			g.url = url;
+
+			// 复刻先祖：休赛期返回「已结束」白底占位图，先判定再决定要不要展示
+			if (g.key === 'fk') {
+				g.gating = true;
+				this.detectEndedPoster(url).then(ended => {
+					g.gating = false;
+					if (ended) {
+						g.status = 'closed';
+						g.url = '';
+						g.desc = '本期已结束';
+					} else {
+						g.status = 'ok';
+					}
+				});
+				return;
+			}
+			g.status = 'ok';
+		},
+
+		/* 红石天气：{ data: [jpg, gif] }，gif 是点赞贴纸，必须过滤 */
+		fetchGuideJson(i, url) {
+			const g = this.guides[i];
+			uni.request({
+				url,
+				method: 'GET',
+				data: { key: this.apiKey },
+				timeout: 12000,
+				success: res => {
+					const body = this.safeJson(res && res.data) || {};
+					const list = Array.isArray(body.data) ? body.data : [];
+					const all = list.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
+					// 优先 jpg/png/webp；只剩 gif 说明当天只返回了表情贴纸
+					const usable = all.filter(u => !/\.gif(\?|$)/i.test(u));
+
+					if (usable.length) {
+						g.url = usable[0];
+						g.desc = '今日天气 + 红石碎片';
+						g.status = 'ok';
+						return;
+					}
+					if (all.length) {
+						// 兜底：只有贴纸图 → 判定为「今日暂无」，绝不把贴纸当天气图展示
+						g.status = 'empty';
+						g.desc = '今日暂无红石天气图';
+						g.err = '接口只返回了贴纸图';
+						return;
+					}
+					g.status = 'error';
+					g.err = '接口返回内容为空';
+				},
+				fail: () => {
+					g.status = 'error';
+					g.err = '网络异常，请重试';
+				}
+			});
+		},
+
+		onGuideImgLoad(i) {
+			const g = this.guides[i];
+			if (!g) return;
+			g.loaded = true;
+			if (g.gating) return; // 占位图判定还没回来，等判定结果再定状态
+			g.status = 'ok';
+			g.err = '';
+		},
+
+		onGuideImgError(i) {
+			const g = this.guides[i];
+			if (!g) return;
+			g.status = 'error';
+			g.err = '图片加载失败，请重试';
+		},
+
+		/* 全屏放大：沿用现有 previewImage 交互 */
+		previewGuide() {
+			const g = this.activeGuide;
+			if (!g.url || g.status !== 'ok') {
+				uni.showToast({ title: '暂无可查看的图片', icon: 'none' });
+				return;
+			}
+			uni.previewImage({ urls: [g.url], current: g.url });
+		},
+
+		/* 判定「已结束」占位图：白底黑字、几乎没有彩色。
+		 * 采样 24×24，平均亮度 > 205 且平均饱和差 < 12 判为占位图。
+		 * 拿不到像素（canvas 被污染 / 非浏览器环境）时一律当正常图，宁可多显示也不误伤。 */
+		detectEndedPoster(url) {
+			return new Promise(resolve => {
+				if (typeof document === 'undefined' || typeof Image === 'undefined') {
+					resolve(false);
+					return;
+				}
+				const img = new Image();
+				img.crossOrigin = 'anonymous';
+				img.onload = () => {
+					try {
+						const size = 24;
+						const cv = document.createElement('canvas');
+						cv.width = size;
+						cv.height = size;
+						const ctx = cv.getContext('2d');
+						ctx.drawImage(img, 0, 0, size, size);
+						const d = ctx.getImageData(0, 0, size, size).data;
+						let lum = 0;
+						let sat = 0;
+						let n = 0;
+						for (let p = 0; p < d.length; p += 4) {
+							const r = d[p];
+							const gg = d[p + 1];
+							const b = d[p + 2];
+							lum += 0.299 * r + 0.587 * gg + 0.114 * b;
+							sat += Math.max(r, gg, b) - Math.min(r, gg, b);
+							n++;
+						}
+						resolve(lum / n > 205 && sat / n < 12);
+					} catch (e) {
+						resolve(false);
+					}
+				};
+				img.onerror = () => resolve(false);
+				img.src = url;
+			});
+		},
+
+		/* 副标题预取：文字接口只有几百字节，先拿到卡片上就能直接显示「雨林1」「烟花魔法」 */
+		prefetchGuideTexts() {
+			uni.request({
+				url: GUIDE_API.jl.text,
+				method: 'GET',
+				data: { key: this.apiKey },
+				timeout: 10000,
+				success: res => {
+					const b = this.safeJson(res && res.data) || {};
+					const jl = b.jlwz && b.jlwz.text ? b.jlwz.text : '';
+					const dl = b.dlwz && b.dlwz.text ? b.dlwz.text : '';
+					if (jl) this.setGuideDesc('jl', dl ? `季蜡 ${jl} · 大蜡 ${dl}` : `季蜡 ${jl}`);
+				}
+			});
+			uni.request({
+				url: GUIDE_API.mf.text,
+				method: 'GET',
+				data: { key: this.apiKey },
+				timeout: 10000,
+				success: res => {
+					const b = this.safeJson(res && res.data) || {};
+					const m = b.magic && b.magic[0] && b.magic[0].text ? b.magic[0].text : '';
+					if (m) this.setGuideDesc('mf', m);
+				}
+			});
+		},
+
+		setGuideDesc(key, desc) {
+			const g = this.guides.find(x => x.key === key);
+			// 已判定「已结束」的项不让副标题覆盖状态文案
+			if (g && g.status !== 'closed') g.desc = desc;
+		},
+
+		/* 复刻先祖提前判定一次：休赛期直接在卡片上标「本期已结束」并禁用点击，
+		 * 不让用户点进去才发现是白底占位图。判定失败（false）就维持原状。 */
+		precheckEndedGuide() {
+			const g = this.guides.find(x => x.key === 'fk');
+			if (!g) return;
+			const url = GUIDE_API.fk.img + '?key=' + this.apiKey;
+			this.detectEndedPoster(url).then(ended => {
+				if (!ended || g.status === 'ok') return;
+				g.status = 'closed';
+				g.desc = '本期已结束';
+			});
+		},
+
+		/* 接口偶尔返回 text/json，统一解析一次 */
+		safeJson(data) {
+			if (!data) return null;
+			if (typeof data === 'object') return data;
+			if (typeof data === 'string') {
+				try {
+					return JSON.parse(data);
+				} catch (e) {
+					return null;
+				}
+			}
+			return null;
 		}
+		// #endif
 	}
 };
 </script>
@@ -1355,5 +1701,171 @@ export default {
 	letter-spacing: 2rpx;
 	color: var(--text-faint);
 	transition: color 0.45s;
+}
+
+/* ---------- 更多攻略：横滑卡片 ---------- */
+/* 放在攻略图下方，只占一行高度；横向滚动，不挤压原有布局。
+   H5 下直接用原生 overflow 滚动，比 scroll-view 更可控（本功能仅 H5）。 */
+.guide-strip {
+	display: flex;
+	width: 100%;
+	padding: 2rpx 8rpx 10rpx;
+	box-sizing: border-box;
+	overflow-x: auto;
+	overflow-y: hidden;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+.guide-strip::-webkit-scrollbar {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+.guide-card {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	flex-shrink: 0;
+	width: 208rpx;
+	margin-right: 16rpx;
+	padding: 20rpx 18rpx 18rpx;
+	box-sizing: border-box;
+	border-radius: 26rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: var(--glass-bg);
+	background-image: linear-gradient(158deg, var(--glass-bg-2) 0%, rgba(255, 255, 255, 0) 70%);
+	box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.10), inset 0 1rpx 0 var(--glass-hl-btm);
+	transition: opacity 0.24s ease, transform 0.18s ease;
+}
+
+.guide-card:last-child {
+	margin-right: 0;
+}
+
+/* 已结束 / 加载失败：压暗，但仍然占位，避免列表跳动 */
+.guide-closed {
+	opacity: 0.42;
+}
+
+.guide-mark {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 46rpx;
+	height: 46rpx;
+	border-radius: 50%;
+	background-image: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+	box-shadow: 0 3rpx 10rpx rgba(0, 0, 0, 0.20);
+}
+
+.guide-mark-txt {
+	font-size: 22rpx;
+	font-weight: 600;
+	color: #0B1116;
+	line-height: 1;
+}
+
+.guide-name {
+	margin-top: 16rpx;
+	font-size: 26rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.guide-desc {
+	max-width: 100%;
+	margin-top: 8rpx;
+	overflow: hidden;
+	font-size: 20rpx;
+	line-height: 1.35;
+	color: var(--text-faint);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	transition: color 0.45s;
+}
+
+/* ---------- 攻略弹层（四个入口共用一个） ---------- */
+.sheet-mask {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 80;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 40rpx;
+	box-sizing: border-box;
+	background-color: rgba(0, 0, 0, 0.56);
+}
+
+.sheet {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-height: 76vh;
+	padding: 28rpx 26rpx 24rpx;
+	box-sizing: border-box;
+	border-radius: 34rpx;
+}
+
+.sheet-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-shrink: 0;
+	margin-bottom: 20rpx;
+}
+
+.sheet-title {
+	font-size: 30rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	color: var(--text);
+}
+
+.sheet-close {
+	padding: 8rpx 18rpx;
+	border-radius: 999rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: var(--glass-bg);
+}
+
+.sheet-close-txt {
+	font-size: 22rpx;
+	color: var(--text-dim);
+}
+
+.sheet-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.sheet-img {
+	display: block;
+	width: 100%;
+	border-radius: 18rpx;
+}
+
+.sheet-fallback {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 300rpx;
+}
+
+.sheet-tip {
+	flex-shrink: 0;
+	margin-top: 18rpx;
+	text-align: center;
+	font-size: 20rpx;
+	color: var(--text-faint);
 }
 </style>
