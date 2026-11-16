@@ -1,0 +1,29 @@
+import { defineConfig } from 'vite';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import uni from '@dcloudio/vite-plugin-uni';
+
+// 本项目采用平铺结构（manifest.json / pages.json 位于根目录），
+// 而 uni-app CLI 默认从 src/ 读取配置，这里显式指定输入目录，
+// 这样直接执行 npm run build:mp-weixin 即可，无需额外设置环境变量。
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+if (!process.env.UNI_INPUT_DIR) {
+	process.env.UNI_INPUT_DIR = rootDir;
+}
+
+export default defineConfig({
+	plugins: [uni()],
+	server: {
+		host: '127.0.0.1',
+		port: 5180,
+		// 本地开发代理：把 /api/* 转发到真实接口，线上由 vercel.json 的 rewrites 承担同样职责。
+		// 这样接口地址在前后端都是相对路径 /api，本地和线上行为一致，也不会触发跨域。
+		proxy: {
+			'/api': {
+				target: 'https://api.t1qq.com',
+				changeOrigin: true,
+				secure: true
+			}
+		}
+	}
+});
