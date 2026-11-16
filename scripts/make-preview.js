@@ -43,7 +43,7 @@ function card(theme, title, sub) {
 				<div class="topbar">
 					<div class="brand"><div class="brand-dot"></div><span class="brand-text">每日云海</span></div>
 					<div class="seg">
-						<div class="seg-thumb ${theme === 'theme-dark' ? 'seg-thumb-right' : ''}"></div>
+						<div class="liq-thumb seg-thumb" style="--idx:${theme === 'theme-dark' ? 1 : 0};--sx:1;--sy:1;--lead:0%"></div>
 						<div class="seg-item"><span class="seg-txt ${theme === 'theme-light' ? 'seg-txt-on' : ''}">日</span></div>
 						<div class="seg-item"><span class="seg-txt ${theme === 'theme-dark' ? 'seg-txt-on' : ''}">夜</span></div>
 					</div>
@@ -54,10 +54,11 @@ function card(theme, title, sub) {
 					<span class="hero-source">数据来源：@今天游离翻车了吗</span>
 					<span class="hero-updated">更新于 13:30</span>
 				</div>
-				<div class="daytabs">
-					<div class="daytab"><span class="daytab-txt">昨天</span></div>
-					<div class="daytab daytab-on"><span class="daytab-txt daytab-txt-on">今天</span></div>
-					<div class="daytab"><span class="daytab-txt">明天</span></div>
+				<div class="daytabs" data-daytabs>
+					<div class="liq-thumb daytabs-thumb" style="--idx:1;--sx:1;--sy:1;--lead:0%"></div>
+					<div class="daytab" data-i="0"><span class="daytab-txt">昨天</span></div>
+					<div class="daytab" data-i="1"><span class="daytab-txt daytab-txt-on">今天</span></div>
+					<div class="daytab" data-i="2"><span class="daytab-txt">明天</span></div>
 				</div>
 				<div class="glass list">${list}</div>
 				<div class="section"><span class="section-title">今日攻略图</span><span class="section-hint">点击放大</span></div>
@@ -116,7 +117,7 @@ ${css}
 </style>
 </head>
 <body>
-	<div class="cap">下面用的是构建产物里的真实 CSS（含 backdrop-filter 毛玻璃）。<br />若卡片背后看不到模糊光斑，说明当前浏览器不支持 backdrop-filter。</div>
+	<div class="cap">下面用的是构建产物里的真实 CSS（含 backdrop-filter 毛玻璃）。<br />点一下「昨天 / 今天 / 明天」，可以看滑块的弹簧滑动 + 拉伸效果。</div>
 	<div class="wrap">
 		${card('theme-dark', '今日任务', '长图加载中…')}
 		${card('theme-light', '今日任务', '长图加载中…')}
@@ -125,6 +126,42 @@ ${css}
 		// 编译后的 CSS 带 data-v-xxx 作用域，这里统一补上
 		const scope = '${scope}';
 		if (scope) document.querySelectorAll('*').forEach(el => el.setAttribute(scope, ''));
+
+		// 预览页复刻线上的弹簧动画，方便直接拖点感受「液态」手感
+		document.querySelectorAll('[data-daytabs]').forEach(box => {
+			const thumb = box.querySelector('.daytabs-thumb');
+			const tabs = [...box.querySelectorAll('.daytab')];
+			const st = { x: 1, v: 0, target: 1, raf: 0 };
+			const paint = () => {
+				const stretch = Math.min(Math.abs(st.v) * 0.026, 0.14);
+				const lead = Math.max(-16, Math.min(16, st.v * 5)).toFixed(1) + '%';
+				thumb.style.setProperty('--idx', st.x);
+				thumb.style.setProperty('--sx', 1 + stretch);
+				thumb.style.setProperty('--sy', 1 - stretch * 0.42);
+				thumb.style.setProperty('--lead', lead);
+			};
+			tabs.forEach((tab, i) => tab.addEventListener('click', () => {
+				st.target = i;
+				tabs.forEach((t, j) => t.querySelector('.daytab-txt').classList.toggle('daytab-txt-on', i === j));
+				if (st.raf) cancelAnimationFrame(st.raf);
+				let last = 0;
+				const step = now => {
+					if (!last) last = now;
+					let dt = (now - last) / 1000;
+					last = now;
+					if (!(dt > 0)) dt = 1 / 60;
+					if (dt > 0.04) dt = 0.04;
+					st.v += (-420 * (st.x - st.target) - 27 * st.v) * dt;
+					st.x += st.v * dt;
+					paint();
+					if (Math.abs(st.v) < 0.03 && Math.abs(st.x - st.target) < 0.0015) {
+						st.x = st.target; st.v = 0; st.raf = 0; paint(); return;
+					}
+					st.raf = requestAnimationFrame(step);
+				};
+				st.raf = requestAnimationFrame(step);
+			}));
+		});
 	</script>
 </body>
 </html>`;

@@ -16,7 +16,7 @@
 				</view>
 
 				<view class="seg" @click="toggleTheme" @longpress="resetThemeAuto">
-					<view class="seg-thumb" :class="{ 'seg-thumb-right': theme === 'dark' }"></view>
+					<view class="liq-thumb seg-thumb" :style="segThumbStyle"></view>
 					<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'light' }">日</text></view>
 					<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'dark' }">夜</text></view>
 				</view>
@@ -32,13 +32,14 @@
 
 			<!-- 日期切换：昨天 / 今天 / 明天 -->
 			<view class="daytabs">
-				<view class="daytab" :class="{ 'daytab-on': dayOffset === -1 }" @click="switchDay(-1)">
+				<view class="liq-thumb daytabs-thumb" :style="dayThumbStyle"></view>
+				<view class="daytab" @click="switchDay(-1)" @touchstart="switchDay(-1)">
 					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }">昨天</text>
 				</view>
-				<view class="daytab" :class="{ 'daytab-on': dayOffset === 0 }" @click="switchDay(0)">
+				<view class="daytab" @click="switchDay(0)" @touchstart="switchDay(0)">
 					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 0 }">今天</text>
 				</view>
-				<view class="daytab" :class="{ 'daytab-on': dayOffset === 1 }" @click="switchDay(1)">
+				<view class="daytab" @click="switchDay(1)" @touchstart="switchDay(1)">
 					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }">明天</text>
 				</view>
 			</view>
@@ -164,6 +165,15 @@ export default {
 			tomorrowLoading: false,
 			tomorrowFetchedDay: '', // 上次拉取明日任务时「今天」的日期，用于跨天重取
 
+			// -------- 液态玻璃滑块（弹簧动画的实时状态） --------
+			// idx 是「第几格」，允许小数：滑动过程中会经过 1.37 这种中间值
+			dayTabIdx: 1, // 昨天=0 / 今天=1 / 明天=2
+			dayTabStretch: 0, // 速度带来的横向拉伸量
+			dayTabLead: '0%', // 高光偏移，制造"液体流动"的方向感
+			segIdx: 1, // 日=0 / 夜=1
+			segStretch: 0,
+			segLead: '0%',
+
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
 				{ id: 1, text: '在云野圆形水池边找到沉睡的蜡烛，点亮后跟随光圈飞行一圈', from: '云野' },
@@ -208,6 +218,16 @@ export default {
 			}
 			if (this.dayOffset === -1) return '这一天没有本地存档（应用每天首次打开时会自动存档）';
 			return '暂无数据';
+		},
+
+		/* -------- 滑块位移：把弹簧状态翻译成 CSS 变量 -------- */
+		/* 拉伸时横向变长、纵向变薄，像被手指带着走的一小团液体 */
+		dayThumbStyle() {
+			return this.thumbStyle(this.dayTabIdx, this.dayTabStretch, this.dayTabLead);
+		},
+
+		segThumbStyle() {
+			return this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
 		}
 	},
 
@@ -223,6 +243,11 @@ export default {
 			this.theme = this.autoTheme();
 		}
 		this.applyThemeBackground();
+
+		// 滑块初始位置直接对齐当前状态，首屏不播放动画
+		this.dayTabIdx = this.dayOffset + 1;
+		this.segIdx = this.theme === 'dark' ? 1 : 0;
+		this.initSpring();
 
 		// 先用 Mock 渲染，保证首屏立刻可见
 		this.applyMock();
@@ -244,6 +269,7 @@ export default {
 			const t = this.autoTheme();
 			if (t !== this.theme) {
 				this.theme = t;
+				this.slideTo('seg', t === 'dark' ? 1 : 0);
 				this.applyThemeBackground();
 			}
 		}
@@ -263,6 +289,12 @@ export default {
 			this.fetchTasks(false, true);
 			this.fetchPoster(false, true);
 		}
+	},
+
+	// 页面销毁时停掉弹簧循环，避免 rAF 泄漏
+	onUnload() {
+		this.stopSpring('day');
+		this.stopSpring('seg');
 	},
 
 	// 下拉刷新（需在 pages.json 中开启 enablePullDownRefresh）
@@ -302,6 +334,88 @@ export default {
 			return n < 10 ? '0' + n : '' + n;
 		},
 
+		/* ---------------- 液态玻璃滑块（弹簧驱动） ---------------- */
+		/* 把「第几格 + 拉伸量 + 高光偏移」拼成 CSS 变量，模板里的滑块只认变量 */
+		thumbStyle(idx, stretch, lead) {
+			return {
+				'--idx': String(idx),
+				'--sx': String(1 + stretch),
+				// 横向拉伸时纵向收一点，视觉上体积守恒，才像液体而不是橡皮筋
+				'--sy': String(1 - stretch * 0.42),
+				'--lead': lead
+			};
+		},
+
+		/* 初始化两套弹簧（不放进 data，避免每帧触发响应式 diff 之外的额外开销） */
+		initSpring() {
+			this._spring = {
+				day: { x: this.dayOffset + 1, v: 0, raf: 0, target: this.dayOffset + 1 },
+				seg: { x: this.theme === 'dark' ? 1 : 0, v: 0, raf: 0, target: this.theme === 'dark' ? 1 : 0 }
+			};
+		},
+
+		/* 阻尼弹簧：刚度 420 / 阻尼 27 ≈ 0.66 阻尼比，约 380ms 到位并轻微回弹 */
+		/* 与 CSS transition 的区别在于它是物理积分，速度可以被读出来驱动拉伸 */
+		slideTo(kind, target) {
+			const st = this._spring && this._spring[kind];
+			if (!st) return;
+			if (st.raf && st.target === target) return; // 已经在去同一格的路上
+			if (typeof requestAnimationFrame !== 'function') {
+				this.applySlide(kind, target, 0, '0%');
+				st.x = target;
+				return;
+			}
+			if (st.raf) cancelAnimationFrame(st.raf);
+			st.target = target;
+
+			let last = 0;
+			const step = now => {
+				if (!last) last = now;
+				let dt = (now - last) / 1000;
+				last = now;
+				if (!(dt > 0)) dt = 1 / 60;
+				if (dt > 0.04) dt = 0.04; // 掉帧时限制步长，防止数值发散
+
+				const accel = -420 * (st.x - st.target) - 27 * st.v;
+				st.v += accel * dt;
+				st.x += st.v * dt;
+
+				const stretch = Math.min(Math.abs(st.v) * 0.026, 0.14);
+				const lead = Math.max(-16, Math.min(16, st.v * 5)).toFixed(1) + '%';
+				this.applySlide(kind, st.x, stretch, lead);
+
+				if (Math.abs(st.v) < 0.03 && Math.abs(st.x - st.target) < 0.0015) {
+					this.applySlide(kind, st.target, 0, '0%');
+					st.x = st.target;
+					st.v = 0;
+					st.raf = 0;
+					return;
+				}
+				st.raf = requestAnimationFrame(step);
+			};
+			st.raf = requestAnimationFrame(step);
+		},
+
+		applySlide(kind, idx, stretch, lead) {
+			if (kind === 'day') {
+				this.dayTabIdx = idx;
+				this.dayTabStretch = stretch;
+				this.dayTabLead = lead;
+			} else {
+				this.segIdx = idx;
+				this.segStretch = stretch;
+				this.segLead = lead;
+			}
+		},
+
+		stopSpring(kind) {
+			const st = this._spring && this._spring[kind];
+			if (st && st.raf) {
+				cancelAnimationFrame(st.raf);
+				st.raf = 0;
+			}
+		},
+
 		/* ---------------- 日期切换与本地存档 ---------------- */
 		/* 取相对今天偏移 N 天的日期字符串：0=今天，-1=昨天，1=明天 */
 		dayText(offset) {
@@ -311,6 +425,9 @@ export default {
 		},
 
 		switchDay(offset) {
+			// touchstart 与 click 都会触发，重复调用直接忽略
+			if (this.dayOffset === offset) return;
+			this.slideTo('day', offset + 1); // -1/0/1 → 0/1/2
 			this.dayOffset = offset;
 			if (offset === -1) this.loadArchive();
 			if (offset === 1) {
@@ -420,7 +537,9 @@ export default {
 
 		/* ---------------- 主题切换 ---------------- */
 		toggleTheme() {
-			this.theme = this.theme === 'dark' ? 'light' : 'dark';
+			const next = this.theme === 'dark' ? 'light' : 'dark';
+			this.slideTo('seg', next === 'dark' ? 1 : 0);
+			this.theme = next;
 			this.themeMode = 'manual'; // 用户手动选过，之后不再被时间覆盖
 			uni.setStorageSync(CACHE_KEY, this.theme);
 			uni.setStorageSync(MODE_KEY, 'manual');
@@ -439,6 +558,7 @@ export default {
 			uni.setStorageSync(MODE_KEY, 'auto');
 			uni.removeStorageSync(CACHE_KEY);
 			this.theme = this.autoTheme();
+			this.slideTo('seg', this.theme === 'dark' ? 1 : 0);
 			this.applyThemeBackground();
 			uni.showToast({ title: '已恢复自动日夜', icon: 'none' });
 		},
@@ -715,6 +835,14 @@ export default {
 	--seg-thumb: rgba(255, 255, 255, 0.16);
 	--seg-thumb-bd: rgba(255, 255, 255, 0.18);
 	--seg-txt-on: #F2F4F8;
+
+	/* 液态滑块：比轨道亮一档，靠 blur + 上下内高光形成"厚度" */
+	--liq-a: rgba(255, 255, 255, 0.24);
+	--liq-b: rgba(255, 255, 255, 0.10);
+	--liq-bd: rgba(255, 255, 255, 0.30);
+	--liq-hl: rgba(255, 255, 255, 0.62);
+	--liq-hl-btm: rgba(255, 255, 255, 0.10);
+	--liq-sheen: rgba(255, 255, 255, 0.24);
 }
 
 .theme-light {
@@ -750,6 +878,13 @@ export default {
 	--seg-thumb: rgba(255, 255, 255, 0.95);
 	--seg-thumb-bd: rgba(255, 255, 255, 0.98);
 	--seg-txt-on: #0B0D12;
+
+	--liq-a: rgba(255, 255, 255, 0.94);
+	--liq-b: rgba(255, 255, 255, 0.72);
+	--liq-bd: rgba(255, 255, 255, 0.98);
+	--liq-hl: rgba(255, 255, 255, 1);
+	--liq-hl-btm: rgba(255, 255, 255, 0.50);
+	--liq-sheen: rgba(198, 216, 255, 0.55);
 }
 
 .page {
@@ -877,6 +1012,41 @@ export default {
 	transition: color 0.45s;
 }
 
+/* ---------- 液态玻璃滑块（日期切换 / 日夜切换共用） ---------- */
+/* 位置用 --idx（可为小数，弹簧中间态），拉伸用 --sx/--sy，高光用 --lead */
+.liq-thumb {
+	position: absolute;
+	z-index: 0;
+	pointer-events: none;
+	overflow: hidden;
+	box-sizing: border-box;
+	border-radius: 999rpx;
+	border: 1rpx solid var(--liq-bd);
+	background-image: linear-gradient(158deg, var(--liq-a) 0%, var(--liq-b) 100%);
+	box-shadow:
+		0 3rpx 10rpx rgba(0, 0, 0, 0.14),
+		inset 0 1rpx 0 var(--liq-hl),
+		inset 0 -1rpx 0 var(--liq-hl-btm);
+	-webkit-backdrop-filter: blur(14px) saturate(200%);
+	backdrop-filter: blur(14px) saturate(200%);
+	transform: translate3d(calc(var(--idx, 1) * 100%), 0, 0) scale(var(--sx, 1), var(--sy, 1));
+	transform-origin: 50% 50%;
+	will-change: transform;
+}
+
+/* 滑块里那点会流动的高光：跟着速度左右跑，像液体被推着走时的反光 */
+.liq-thumb::after {
+	content: '';
+	position: absolute;
+	top: -50%;
+	left: 50%;
+	width: 140%;
+	height: 200%;
+	transform: translateX(calc(-50% + var(--lead, 0%)));
+	background-image: radial-gradient(closest-side, var(--liq-sheen) 0%, rgba(255, 255, 255, 0) 100%);
+	pointer-events: none;
+}
+
 /* 日夜分段控件 */
 .seg {
 	position: relative;
@@ -888,6 +1058,7 @@ export default {
 	padding: 4rpx;
 	box-sizing: border-box;
 	border-radius: 999rpx;
+	overflow: hidden;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
 	-webkit-backdrop-filter: blur(18px) saturate(180%);
@@ -896,23 +1067,14 @@ export default {
 }
 
 .seg-thumb {
-	position: absolute;
-	top: 4rpx;
 	left: 4rpx;
-	width: 62rpx;
-	height: 48rpx;
-	border-radius: 999rpx;
-	background-color: var(--seg-thumb);
-	border: 1rpx solid var(--seg-thumb-bd);
-	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
-	transition: transform 0.36s cubic-bezier(0.32, 1.3, 0.5, 1);
-}
-
-.seg-thumb-right {
-	transform: translateX(62rpx);
+	top: 4rpx;
+	bottom: 4rpx;
+	width: calc((100% - 8rpx) / 2);
 }
 
 .seg-item {
+	position: relative;
 	flex: 1;
 	display: flex;
 	align-items: center;
@@ -923,7 +1085,7 @@ export default {
 .seg-txt {
 	font-size: 22rpx;
 	color: var(--text-dim);
-	transition: color 0.3s ease;
+	transition: color 0.28s ease;
 }
 
 .seg-txt-on {
@@ -933,11 +1095,13 @@ export default {
 
 /* ---------- 日期切换（昨天 / 今天 / 明天） ---------- */
 .daytabs {
+	position: relative;
 	display: flex;
 	align-items: center;
 	margin-bottom: 24rpx;
 	padding: 5rpx;
 	border-radius: 999rpx;
+	overflow: hidden;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
 	-webkit-backdrop-filter: blur(18px) saturate(180%);
@@ -945,29 +1109,29 @@ export default {
 	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
 }
 
+.daytabs-thumb {
+	left: 5rpx;
+	top: 5rpx;
+	bottom: 5rpx;
+	width: calc((100% - 10rpx) / 3);
+}
+
 .daytab {
+	position: relative;
+	z-index: 1;
 	flex: 1;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	height: 62rpx;
 	border-radius: 999rpx;
-	/* 预占边框，避免选中时出现 1px 抖动 */
-	border: 1rpx solid transparent;
-	transition: background-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-.daytab-on {
-	background-color: var(--seg-thumb);
-	border: 1rpx solid var(--seg-thumb-bd);
-	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
 }
 
 .daytab-txt {
 	font-size: 24rpx;
 	letter-spacing: 1rpx;
 	color: var(--text-dim);
-	transition: color 0.3s ease;
+	transition: color 0.28s ease, transform 0.28s ease;
 }
 
 .daytab-txt-on {
