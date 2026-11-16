@@ -218,12 +218,27 @@
 								:key="p.id"
 								:style="{ left: 'calc(50% + ' + p.x + 'px)' }"
 							>{{ p.text }}</text>
-							<view class="muyu">
-								<text class="muyu-txt">木</text>
+
+							<view class="muyu-halo" :class="{ 'muyu-halo-on': muyuHit }"></view>
+
+							<view class="muyu-wrap" :class="{ 'muyu-hit': muyuHit }">
+								<!-- 木槌 -->
+								<view class="muyu-stick" :class="{ 'muyu-stick-swing': muyuHit }">
+									<view class="muyu-stick-head"></view>
+									<view class="muyu-stick-bar"></view>
+								</view>
+								<!-- 木鱼本体：椭圆鱼身 + 顶部开口 + 木纹 + 玻璃高光 -->
+								<view class="muyu-body">
+									<view class="muyu-slit"></view>
+									<view class="muyu-grain"></view>
+									<view class="muyu-gloss"></view>
+								</view>
+								<view class="muyu-tail"></view>
 							</view>
-							<text class="muyu-hint">点一下木鱼，功德 +1</text>
+
+							<text class="muyu-hint">轻点木鱼，功德 +1</text>
 						</view>
-						<text class="muyu-count">已积累 {{ muyuCount }} 点功德</text>
+						<text class="muyu-count">已积累 <text class="muyu-num">{{ muyuCount }}</text> 点功德</text>
 					</view>
 
 					<!-- 光遇抽签 -->
@@ -240,13 +255,34 @@
 					</view>
 
 					<!-- 答案之书 -->
-					<view class="play-body" v-else>
+					<view class="play-body" v-else-if="playView === 'answer'">
 						<view class="answer-card" :class="{ 'answer-card-rolling': answerRolling }">
 							<text class="answer-hint">心里默念一个问题</text>
 							<text class="answer-text">{{ answerRolling ? '……' : answerText || '然后翻开这一页' }}</text>
 						</view>
 						<view class="play-btn" hover-class="play-btn-active" :hover-stay-time="80" @click="drawAnswer">
 							<text class="play-btn-txt">翻开答案之书</text>
+						</view>
+					</view>
+
+					<!-- 计算器：纯本地，液态玻璃小键盘 -->
+					<view class="play-body calc-body" v-else>
+						<view class="calc-screen">
+							<text class="calc-expr">{{ calcExpr }}</text>
+							<text class="calc-out" :class="{ 'calc-out-err': calcErr }">{{ calcOut }}</text>
+						</view>
+						<view class="calc-pad">
+							<view
+								class="calc-key"
+								v-for="k in calcKeys"
+								:key="k.k"
+								:class="k.cls"
+								hover-class="calc-key-active"
+								:hover-stay-time="60"
+								@click="calcPress(k.k)"
+							>
+								<text class="calc-key-txt">{{ k.k }}</text>
+							</view>
 						</view>
 					</view>
 				</view>
@@ -384,41 +420,98 @@ export default {
 			refreshTip: '',
 			refreshTimer: 0, // setInterval 句柄，onUnload 里清掉
 
-			// -------- 娱乐悬浮球：敲木鱼 / 抽签 / 答案之书（纯本地，无请求） --------
+			// -------- 娱乐悬浮球：敲木鱼 / 抽签 / 答案之书 / 计算器（纯本地，无请求） --------
 			playOpen: false,
-			playView: 'list', // list 入口列表 / muyu 敲木鱼 / sign 抽签 / answer 答案之书
+			playView: 'list', // list 入口列表 / muyu / sign / answer / calc
 			muyuCount: 0, // 累计功德
 			muyuPops: [], // 飘字动画队列 { id, text, x }
 			muyuSeq: 0, // 飘字唯一 id
+			muyuHit: false, // 木鱼敲击动画开关（点一下置 true，320ms 后复位）
 			signResult: null, // { level, text, tone }
 			signRolling: false,
 			answerText: '',
 			answerRolling: false,
+			// 计算器状态：全本地，immediate-execution 计算
+			calcInput: '0', // 当前输入串
+			calcAcc: null, // 累积值
+			calcOp: '', // 挂起运算符：+ − × ÷
+			calcFresh: true, // 下一个数字键是否覆盖当前输入
+			calcErr: false,
+			calcExpr: '', // 屏幕上方算式小字
+			calcKeys: [
+				{ k: 'C', cls: 'calc-key-fn' },
+				{ k: '⌫', cls: 'calc-key-fn' },
+				{ k: '÷', cls: 'calc-key-op' },
+				{ k: '×', cls: 'calc-key-op' },
+				{ k: '7' },
+				{ k: '8' },
+				{ k: '9' },
+				{ k: '−', cls: 'calc-key-op' },
+				{ k: '4' },
+				{ k: '5' },
+				{ k: '6' },
+				{ k: '+', cls: 'calc-key-op' },
+				{ k: '1' },
+				{ k: '2' },
+				{ k: '3' },
+				{ k: '=', cls: 'calc-key-eq calc-key-tall' },
+				{ k: '0', cls: 'calc-key-wide' },
+				{ k: '.' }
+			],
 			// 抽签文案：写死在本地，不请求任何接口
 			signPool: [
-				{ level: '大吉', text: '今日跑暴风眼必不掉翼', tone: 'best' },
-				{ level: '大吉', text: '先祖见你都主动伸手，蜡烛自己往兜里跳', tone: 'best' },
-				{ level: '中吉', text: '暮土一次过，冥龙今天在打瞌睡', tone: 'good' },
-				{ level: '中吉', text: '牵手好友必有回响，今日宜双人跑图', tone: 'good' },
-				{ level: '平', text: '宜挂机，忌跑图', tone: 'flat' },
-				{ level: '平', text: '适合在云野坐着看云，蜡烛不急', tone: 'flat' },
-				{ level: '小凶', text: '去暮土小心被皮皮虾盯上', tone: 'bad' },
-				{ level: '小凶', text: '今日宜绕开螃蟹堆，被撞了别怪签文没提醒', tone: 'bad' }
+				{ level: '大吉', text: '今日跑暴风眼必不掉翼 (๑˃̵ᴗ˂̵)', tone: 'best' },
+				{ level: '大吉', text: '先祖见你都主动伸手，蜡烛自己往兜里跳 (✧∇✧)', tone: 'best' },
+				{ level: '大吉', text: '暮土一次过，冥龙今天在打瞌睡 (´｡• ᵕ •｡`)', tone: 'best' },
+				{ level: '中吉', text: '牵手好友必有回响，今日宜双人跑图 (๑•̀ㅂ•́)و✧', tone: 'good' },
+				{ level: '中吉', text: '雨林隐藏图会给你一点小惊喜 (｡･ω･｡)ﾉ♡', tone: 'good' },
+				{ level: '中吉', text: '今日蜡烛格外听话，跑两个图就够本了 (・∀・)', tone: 'good' },
+				{ level: '平', text: '宜挂机，忌跑图 (￣▽￣)ノ', tone: 'flat' },
+				{ level: '平', text: '适合在云野坐着看云，蜡烛不急 (￣ω￣)', tone: 'flat' },
+				{ level: '平', text: '今日运势平平，但风景很好 (´ω｀)', tone: 'flat' },
+				{ level: '小凶', text: '去暮土小心被皮皮虾盯上 (｡•́︿•̀｡)', tone: 'bad' },
+				{ level: '小凶', text: '今日宜绕开螃蟹堆，被撞了别怪签文没提醒 (＞﹏＜)', tone: 'bad' },
+				{ level: '小凶', text: '暴风眼今日风大，翼少的先别去 (´；ω；｀)', tone: 'bad' }
 			],
-			// 答案之书：万能答案，写死在本地
+			// 答案之书：30+ 条光遇梗，全部本地写死，断网也能翻
 			answerPool: [
-				'别想了，去跑图吧',
-				'是的',
-				'再等等',
-				'绝对不行',
-				'今天没戏，明天再来',
-				'你心里其实已经有答案了',
-				'会有人牵你的手',
-				'放手吧，前面还有更好的',
-				'就现在，别犹豫',
-				'换个方向试试'
+				'别想了，去跑图吧 (๑•̀ㅂ•́)و✧',
+				'是的 (´｡• ᵕ •｡`)',
+				'再等等，蜡烛还没熟 (￣▽￣)',
+				'绝对不行 (＞﹏＜)',
+				'今天没戏，明天再来 (｡•́︿•̀｡)',
+				'你心里其实已经有答案了 (￣ω￣)',
+				'会有人牵你的手 (｡･ω･｡)ﾉ♡',
+				'放手吧，前面还有更好的 (´；ω；｀)',
+				'就现在，别犹豫 (๑˃̵ᴗ˂̵)',
+				'换个方向试试，比如雨林 (・∀・)',
+				'今天必炸大花！(๑•̀ㅂ•́)و✧',
+				'去跑图吧，冥龙在等你 (￣^￣)',
+				'答案在雨林隐藏图里哦 (｡•́︿•̀｡)',
+				'先点了先祖再说 (✧∇✧)',
+				'你需要的是朋友，不是答案 (๑•́ ₃ •̀๑)',
+				'会掉的，但不会掉太多 (￣▽￣)ノ',
+				'放心飞，风会接住你 (´ω｀)',
+				'这件斗篷你值得拥有 (｡•̀ᴗ-)✧',
+				'今天的运气藏在暮土 (・_・;)',
+				'别问，问就是缘分 (￣ω￣)',
+				'先挂机十分钟，答案自己会来 (￣▽￣)',
+				'去吧，红石今天站在你这边 (๑•̀ㅂ•́)و✧',
+				'你已经比昨天强了 (๑•̀ㅂ•́)✧',
+				'别急，蜡烛会一直亮着 (｡･ω･｡)',
+				'这次真的可以 (๑˃̵ᴗ˂̵)',
+				'大概率会掉翼，但你不在乎 (´；ω；｀)',
+				'问得太多了，先祖也有点累 (￣▽￣;)',
+				'云野的风说：可以 (´｡• ᵕ •｡`)',
+				'今晚的星空会给你提示 (✧∇✧)',
+				'想清楚再点，确认键不贵 (・∀・)',
+				'换个搭子，答案会不一样 (￣ω￣)',
+				'如果你还在犹豫，那就是不行 (｡•́︿•̀｡)',
+				'答案是肯定的，只是你不敢信 (๑•̀ㅂ•́)و✧',
+				'再跑一张图，你就想通了 (￣▽￣)ノ',
+				'今天的你值得一点小幸运 (｡･ω･｡)ﾉ♡'
 			],
-			muyuWords: ['功德 +1', '烛火 +1', '心诚则灵 +1'],
+			muyuWords: ['功德 +1', '烛火 +1', '心诚则灵 +1', '光之子 +1'],
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -488,15 +581,23 @@ export default {
 			if (this.playView === 'muyu') return '敲木鱼';
 			if (this.playView === 'sign') return '光遇抽签';
 			if (this.playView === 'answer') return '答案之书';
+			if (this.playView === 'calc') return '计算器';
 			return '歇一会儿';
 		},
 
 		playItems() {
 			return [
-				{ key: 'muyu', icon: '木', name: '敲木鱼', desc: '点一下，功德 +1' },
+				{ key: 'muyu', icon: '木', name: '敲木鱼', desc: '轻点一下，功德 +1' },
 				{ key: 'sign', icon: '签', name: '光遇抽签', desc: '今日运势，玄学一把' },
-				{ key: 'answer', icon: '书', name: '答案之书', desc: '心里默念问题，翻开一页' }
+				{ key: 'answer', icon: '书', name: '答案之书', desc: '心里默念问题，翻开一页' },
+				{ key: 'calc', icon: '算', name: '计算器', desc: '加减乘除，随手算一算' }
 			];
+		},
+
+		/* 计算器显示：出错时给提示，否则就是当前输入串 */
+		calcOut() {
+			if (this.calcErr) return '不能除以 0';
+			return this.calcInput;
 		},
 
 		// #ifdef H5
@@ -1220,7 +1321,7 @@ export default {
 			this.playView = 'list';
 		},
 
-		/* 敲木鱼：本地累加 + 飘字 + 震动，不发任何请求 */
+		/* 敲木鱼：本地累加 + 飘字 + 震动 + 合成音效，不发任何请求 */
 		tapMuyu() {
 			this.muyuCount = this.muyuCount + 1;
 			const words = this.muyuWords;
@@ -1233,7 +1334,189 @@ export default {
 			setTimeout(() => {
 				this.muyuPops = this.muyuPops.filter(p => p.id !== id);
 			}, 1100);
+
+			// 缩小再弹回的物理反馈：连点时先复位再重新触发 CSS 动画
+			this.muyuHit = false;
+			this.$nextTick(() => {
+				this.muyuHit = true;
+				setTimeout(() => {
+					this.muyuHit = false;
+				}, 340);
+			});
+
+			this.knock();
 			this.buzz();
+		},
+
+		/* 用 WebAudio 现场合成一记「咚」：低频正弦快速下滑 + 一小段木头脆响噪声。
+		 * 不需要任何音频文件；浏览器要求用户手势后才能出声，这里正好在点击里调用。 */
+		knock() {
+			try {
+				const AC = window.AudioContext || window.webkitAudioContext;
+				if (!AC) return;
+				if (!this._ac) this._ac = new AC();
+				const ac = this._ac;
+				if (ac.state === 'suspended') ac.resume();
+				const t = ac.currentTime;
+
+				// ① 木鱼共鸣：正弦从 220Hz 迅速落到 62Hz，短促衰减
+				const osc = ac.createOscillator();
+				osc.type = 'sine';
+				osc.frequency.setValueAtTime(228, t);
+				osc.frequency.exponentialRampToValueAtTime(64, t + 0.16);
+				const g = ac.createGain();
+				g.gain.setValueAtTime(0.0001, t);
+				g.gain.exponentialRampToValueAtTime(0.5, t + 0.008);
+				g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+				osc.connect(g);
+				g.connect(ac.destination);
+				osc.start(t);
+				osc.stop(t + 0.46);
+
+				// ② 木头脆响：几十毫秒的带通噪声，让「咚」带一点敲击感
+				const len = Math.floor(ac.sampleRate * 0.055);
+				const buf = ac.createBuffer(1, len, ac.sampleRate);
+				const data = buf.getChannelData(0);
+				for (let i = 0; i < len; i++) {
+					data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+				}
+				const src = ac.createBufferSource();
+				src.buffer = buf;
+				const bp = ac.createBiquadFilter();
+				bp.type = 'bandpass';
+				bp.frequency.value = 1350;
+				bp.Q.value = 0.9;
+				const ng = ac.createGain();
+				ng.gain.value = 0.26;
+				src.connect(bp);
+				bp.connect(ng);
+				ng.connect(ac.destination);
+				src.start(t);
+			} catch (e) {
+				// 浏览器不支持 / 被自动播放策略拦下：静音即可，绝不影响计数
+			}
+		},
+
+		/* ---------------- 计算器（纯本地） ---------------- */
+		calcPress(k) {
+			if (k === 'C') {
+				this.calcClear();
+				return;
+			}
+			if (k === '⌫') {
+				this.calcBack();
+				return;
+			}
+			if (k === '=') {
+				this.calcEqual();
+				return;
+			}
+			if (k === '.' || /^[0-9]$/.test(k)) {
+				this.calcDigit(k);
+				return;
+			}
+			this.calcOperator(k);
+		},
+
+		calcDigit(k) {
+			if (this.calcErr) this.calcClear();
+			if (this.calcFresh) {
+				this.calcInput = k === '.' ? '0.' : k;
+				this.calcFresh = false;
+				return;
+			}
+			if (k === '.') {
+				if (this.calcInput.indexOf('.') >= 0) return;
+				this.calcInput = this.calcInput + '.';
+				return;
+			}
+			if (this.calcInput === '0') {
+				this.calcInput = k;
+				return;
+			}
+			if (this.calcInput.replace(/[-.]/g, '').length >= 12) return;
+			this.calcInput = this.calcInput + k;
+		},
+
+		calcOperator(op) {
+			if (this.calcErr) return;
+			const cur = parseFloat(this.calcInput);
+			const val = isNaN(cur) ? 0 : cur;
+
+			// 已经有挂起运算符且输入了新数字 → 先算一步（连续按运算符则只换符号）
+			if (this.calcOp && !this.calcFresh) {
+				const r = this.calcApply(this.calcAcc, val, this.calcOp);
+				if (r === null) return;
+				this.calcAcc = r;
+				this.calcInput = this.calcFmt(r);
+			} else if (this.calcAcc === null) {
+				this.calcAcc = val;
+			}
+
+			this.calcOp = op;
+			this.calcFresh = true;
+			this.calcExpr = this.calcFmt(this.calcAcc) + ' ' + op;
+		},
+
+		calcEqual() {
+			if (this.calcErr || !this.calcOp) return;
+			const cur = parseFloat(this.calcInput);
+			const val = isNaN(cur) ? 0 : cur;
+			const r = this.calcApply(this.calcAcc, val, this.calcOp);
+			if (r === null) return;
+			this.calcExpr = this.calcFmt(this.calcAcc) + ' ' + this.calcOp + ' ' + this.calcFmt(val) + ' =';
+			this.calcInput = this.calcFmt(r);
+			this.calcAcc = null;
+			this.calcOp = '';
+			this.calcFresh = true;
+		},
+
+		calcApply(a, b, op) {
+			let r = 0;
+			if (op === '+') r = a + b;
+			else if (op === '−') r = a - b;
+			else if (op === '×') r = a * b;
+			else if (op === '÷') {
+				if (b === 0) {
+					this.calcErr = true;
+					this.calcExpr = this.calcFmt(a) + ' ÷ 0';
+					this.calcAcc = null;
+					this.calcOp = '';
+					this.calcFresh = true;
+					return null;
+				}
+				r = a / b;
+			}
+			// 抹掉 0.1+0.2=0.30000000000000004 这种浮点尾巴
+			return Math.round(r * 1e10) / 1e10;
+		},
+
+		calcFmt(v) {
+			if (!isFinite(v)) return '0';
+			const n = Math.round(v * 1e10) / 1e10;
+			const s = String(n);
+			if (s.replace(/[-.]/g, '').length > 12) return n.toExponential(6);
+			return s;
+		},
+
+		calcClear() {
+			this.calcInput = '0';
+			this.calcAcc = null;
+			this.calcOp = '';
+			this.calcFresh = true;
+			this.calcErr = false;
+			this.calcExpr = '';
+		},
+
+		calcBack() {
+			if (this.calcErr) {
+				this.calcClear();
+				return;
+			}
+			if (this.calcFresh) return;
+			let s = this.calcInput.slice(0, -1);
+			if (s === '' || s === '-') s = '0';
+			this.calcInput = s;
 		},
 
 		/* 光遇抽签：从本地签池随机 */
@@ -1560,6 +1843,11 @@ export default {
 	--liq-hl: rgba(255, 255, 255, 0.62);
 	--liq-hl-btm: rgba(255, 255, 255, 0.10);
 	--liq-sheen: rgba(255, 255, 255, 0.24);
+
+	/* 木鱼：深木色 + 暗金高光，飘字用暖金带光晕 */
+	--muyu-ink: #FFD79A;
+	--muyu-glow: rgba(255, 196, 92, 0.85);
+	--muyu-halo: rgba(255, 190, 90, 0.30);
 }
 
 .theme-light {
@@ -1602,6 +1890,11 @@ export default {
 	--liq-hl: rgba(255, 255, 255, 1);
 	--liq-hl-btm: rgba(255, 255, 255, 0.50);
 	--liq-sheen: rgba(198, 216, 255, 0.55);
+
+	/* 浅色下飘字改用深琥珀，避免金粉在白底上看不清 */
+	--muyu-ink: #B4691A;
+	--muyu-glow: rgba(255, 174, 66, 0.55);
+	--muyu-halo: rgba(255, 186, 96, 0.28);
 }
 
 .page {
@@ -2415,7 +2708,8 @@ export default {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	max-height: 78vh;
+	max-height: 86vh;
+	overflow-y: auto;
 	padding: 14rpx 32rpx calc(30rpx + env(safe-area-inset-bottom));
 	box-sizing: border-box;
 	border-radius: 44rpx 44rpx 0 0;
@@ -2582,7 +2876,7 @@ export default {
 	color: var(--btn-txt);
 }
 
-/* 敲木鱼 */
+/* ---------- 敲木鱼：纯 CSS 画木鱼 ---------- */
 .muyu-stage {
 	position: relative;
 	display: flex;
@@ -2590,34 +2884,203 @@ export default {
 	align-items: center;
 	justify-content: center;
 	width: 100%;
-	height: 360rpx;
+	height: 400rpx;
 }
 
-.muyu {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 212rpx;
-	height: 212rpx;
+/* 敲击瞬间从木鱼身后荡开的一圈暖光 */
+.muyu-halo {
+	position: absolute;
+	top: 36%;
+	left: 50%;
+	width: 380rpx;
+	height: 380rpx;
 	border-radius: 50%;
-	background-image: radial-gradient(circle at 34% 28%, #916740 0%, #5b3a1e 62%, #3d240e 100%);
-	box-shadow: 0 18rpx 40rpx rgba(0, 0, 0, 0.34), inset 0 2rpx 0 rgba(255, 255, 255, 0.32);
-	transition: transform 0.12s ease;
+	background-image: radial-gradient(circle, var(--muyu-halo) 0%, rgba(255, 255, 255, 0) 66%);
+	opacity: 0;
+	transform: translate(-50%, -50%) scale(0.72);
+	transition: opacity 0.4s ease, transform 0.4s ease;
+	pointer-events: none;
 }
 
-.muyu-stage:active .muyu {
-	transform: scale(0.93);
+.muyu-halo-on {
+	opacity: 1;
+	transform: translate(-50%, -50%) scale(1.08);
+	transition: opacity 0.08s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.muyu-txt {
-	font-size: 64rpx;
-	font-weight: 600;
-	letter-spacing: 4rpx;
-	color: rgba(255, 255, 255, 0.86);
+.muyu-wrap {
+	position: relative;
+	width: 300rpx;
+	height: 240rpx;
+	transform-origin: 50% 74%;
+	will-change: transform;
+}
+
+/* 点击反馈：先被按扁，再弹过头，最后回稳 */
+.muyu-hit {
+	animation: muyu-bounce 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes muyu-bounce {
+	0% {
+		transform: scale(1) translateY(0);
+	}
+	18% {
+		transform: scale(0.9, 0.86) translateY(10rpx);
+	}
+	52% {
+		transform: scale(1.05, 1.03) translateY(-4rpx);
+	}
+	76% {
+		transform: scale(0.985, 0.99) translateY(1rpx);
+	}
+	100% {
+		transform: scale(1) translateY(0);
+	}
+}
+
+/* 鱼身：椭圆 + 上窄下宽的轮廓，深木色径向渐变打光 */
+.muyu-body {
+	position: absolute;
+	left: 50%;
+	bottom: 0;
+	z-index: 2;
+	width: 244rpx;
+	height: 196rpx;
+	margin-left: -122rpx;
+	border-radius: 50% 50% 47% 47% / 58% 58% 42% 42%;
+	background-image: radial-gradient(120% 118% at 34% 20%, #B9814E 0%, #8A5527 34%, #5C3413 68%, #341C08 100%);
+	box-shadow: 0 22rpx 44rpx rgba(0, 0, 0, 0.38), inset 0 -12rpx 24rpx rgba(0, 0, 0, 0.42),
+		inset 0 6rpx 14rpx rgba(255, 255, 255, 0.14);
+	overflow: hidden;
+}
+
+/* 顶部开口 */
+.muyu-slit {
+	position: absolute;
+	top: 9%;
+	left: 50%;
+	width: 124rpx;
+	height: 30rpx;
+	margin-left: -62rpx;
+	border-radius: 50%;
+	background-image: linear-gradient(180deg, #1E0F04 0%, #3A1F08 68%, rgba(58, 31, 8, 0) 100%);
+	box-shadow: inset 0 3rpx 5rpx rgba(0, 0, 0, 0.85), 0 2rpx 0 rgba(255, 208, 158, 0.22);
+}
+
+/* 木纹 */
+.muyu-grain {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	opacity: 0.55;
+	background-image: repeating-linear-gradient(
+			102deg,
+			rgba(255, 255, 255, 0.05) 0,
+			rgba(255, 255, 255, 0.05) 2rpx,
+			rgba(0, 0, 0, 0.06) 2rpx,
+			rgba(0, 0, 0, 0.06) 6rpx
+		),
+		repeating-linear-gradient(
+			94deg,
+			rgba(0, 0, 0, 0.12) 0,
+			rgba(0, 0, 0, 0.12) 1rpx,
+			rgba(0, 0, 0, 0) 1rpx,
+			rgba(0, 0, 0, 0) 15rpx
+		);
+}
+
+/* 裹在木鱼外面的一层液态玻璃高光 */
+.muyu-gloss {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	border-radius: inherit;
+	background-image: linear-gradient(
+			146deg,
+			rgba(255, 255, 255, 0.44) 0%,
+			rgba(255, 255, 255, 0.12) 26%,
+			rgba(255, 255, 255, 0) 54%
+		),
+		radial-gradient(58% 42% at 26% 12%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 100%);
+	box-shadow: inset 0 2rpx 0 rgba(255, 255, 255, 0.4), inset 0 -2rpx 0 rgba(0, 0, 0, 0.32);
+	pointer-events: none;
+}
+
+/* 鱼尾小柄 */
+.muyu-tail {
+	position: absolute;
+	right: 4rpx;
+	bottom: 40rpx;
+	z-index: 1;
+	width: 96rpx;
+	height: 48rpx;
+	border-radius: 50% 40% 40% 50%;
+	background-image: radial-gradient(120% 120% at 70% 38%, #8B5626 0%, #5A3313 58%, #341C08 100%);
+	transform: rotate(-16deg);
+	box-shadow: inset 0 2rpx 0 rgba(255, 255, 255, 0.16), 0 10rpx 20rpx rgba(0, 0, 0, 0.26);
+}
+
+/* 木槌：歇着时斜靠在右上方，敲下去时头部落到鱼身上 */
+.muyu-stick {
+	position: absolute;
+	top: -34rpx;
+	right: 34rpx;
+	z-index: 3;
+	width: 24rpx;
+	height: 150rpx;
+	transform-origin: 50% 100%;
+	transform: rotate(-32deg);
+}
+
+.muyu-stick-swing {
+	animation: muyu-swing 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes muyu-swing {
+	0% {
+		transform: rotate(-32deg);
+	}
+	16% {
+		transform: rotate(-52deg);
+	}
+	56% {
+		transform: rotate(-28deg);
+	}
+	100% {
+		transform: rotate(-32deg);
+	}
+}
+
+.muyu-stick-bar {
+	position: absolute;
+	left: 50%;
+	bottom: 0;
+	width: 14rpx;
+	height: 130rpx;
+	margin-left: -7rpx;
+	border-radius: 999rpx;
+	background-image: linear-gradient(90deg, #3E2209 0%, #8C5828 46%, #3B2009 100%);
+}
+
+.muyu-stick-head {
+	position: absolute;
+	top: 0;
+	left: 50%;
+	width: 58rpx;
+	height: 58rpx;
+	margin-left: -29rpx;
+	border-radius: 50%;
+	background-image: radial-gradient(circle at 34% 28%, #C08A55 0%, #7A4A22 56%, #3B2009 100%);
+	box-shadow: 0 8rpx 18rpx rgba(0, 0, 0, 0.35), inset 0 2rpx 0 rgba(255, 255, 255, 0.3);
 }
 
 .muyu-hint {
-	margin-top: 24rpx;
+	margin-top: 28rpx;
 	font-size: 22rpx;
 	letter-spacing: 1rpx;
 	color: var(--text-faint);
@@ -2625,22 +3088,30 @@ export default {
 }
 
 .muyu-count {
-	margin-top: 6rpx;
+	margin-top: 10rpx;
 	font-size: 22rpx;
 	letter-spacing: 1rpx;
 	color: var(--text-dim);
 	transition: color 0.45s;
 }
 
+.muyu-num {
+	font-size: 27rpx;
+	font-weight: 700;
+	color: var(--muyu-ink);
+}
+
+/* 飘字：暖金 + 光晕 */
 .muyu-pop {
 	position: absolute;
-	top: 44%;
+	top: 34%;
 	transform: translate(-50%, 0);
-	font-size: 24rpx;
-	font-weight: 600;
+	font-size: 26rpx;
+	font-weight: 700;
 	letter-spacing: 1rpx;
 	white-space: nowrap;
-	color: var(--accent);
+	color: var(--muyu-ink);
+	text-shadow: 0 0 10rpx var(--muyu-glow), 0 0 26rpx var(--muyu-glow), 0 1rpx 2rpx rgba(0, 0, 0, 0.32);
 	pointer-events: none;
 	animation: muyu-pop 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
 }
@@ -2656,7 +3127,7 @@ export default {
 	}
 	100% {
 		opacity: 0;
-		transform: translate(-50%, -150rpx) scale(1.05);
+		transform: translate(-50%, -160rpx) scale(1.06);
 	}
 }
 
@@ -2755,5 +3226,115 @@ export default {
 	letter-spacing: 2rpx;
 	color: var(--text);
 	transition: color 0.45s;
+}
+
+/* ---------- 计算器：液态玻璃小键盘 ---------- */
+.calc-body {
+	width: 100%;
+}
+
+.calc-screen {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: flex-end;
+	width: 100%;
+	min-height: 150rpx;
+	padding: 20rpx 26rpx;
+	box-sizing: border-box;
+	border-radius: 30rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: var(--glass-bg-2);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
+	overflow: hidden;
+}
+
+.calc-expr {
+	min-height: 30rpx;
+	font-size: 22rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-faint);
+	transition: color 0.45s;
+}
+
+.calc-out {
+	margin-top: 6rpx;
+	max-width: 100%;
+	font-size: 54rpx;
+	font-weight: 600;
+	line-height: 1.12;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.calc-out-err {
+	font-size: 32rpx;
+	font-weight: 500;
+	color: #ff7a7a;
+}
+
+.calc-pad {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	grid-auto-rows: 86rpx;
+	gap: 14rpx;
+	width: 100%;
+	margin-top: 20rpx;
+}
+
+.calc-key {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 24rpx;
+	border: 1rpx solid var(--seg-thumb-bd);
+	background-color: var(--seg-thumb);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl), 0 4rpx 10rpx rgba(0, 0, 0, 0.10);
+	transition: transform 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.calc-key-active {
+	transform: scale(0.93);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl), 0 1rpx 4rpx rgba(0, 0, 0, 0.10);
+}
+
+.calc-key-txt {
+	font-size: 32rpx;
+	font-weight: 500;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.calc-key-fn .calc-key-txt {
+	font-size: 28rpx;
+	color: var(--text-dim);
+}
+
+.calc-key-op .calc-key-txt {
+	font-size: 38rpx;
+	font-weight: 600;
+	color: var(--accent);
+}
+
+.calc-key-eq {
+	border-color: transparent;
+	background-image: linear-gradient(180deg, var(--btn-a) 0%, var(--btn-b) 100%);
+	box-shadow: 0 8rpx 20rpx rgba(10, 60, 140, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.5);
+}
+
+.calc-key-eq .calc-key-txt {
+	font-size: 40rpx;
+	font-weight: 700;
+	color: var(--btn-txt);
+}
+
+.calc-key-wide {
+	grid-column: span 2;
+}
+
+.calc-key-tall {
+	grid-row: span 2;
 }
 </style>
