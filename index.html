@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 	<head>
-		<meta charset="UTF-8" />
-		<script>
+	<meta charset="UTF-8" />
+	<!-- 不发送 Referer：ok.166.net 等图床有防盗链，带 Referer 会被 403 -->
+	<meta name="referrer" content="no-referrer" />
+	<script>
 			var coverSupport =
 				'CSS' in window &&
 				typeof CSS.supports === 'function' &&

@@ -102,6 +102,51 @@
 				</view>
 			</view>
 
+			<!-- 国服活动日历：独立区块（hdrl 接口只返回一张日历长图） -->
+			<view class="section" v-if="isToday">
+				<text class="section-title">国服活动日历</text>
+				<text class="section-hint">点击查看</text>
+			</view>
+
+			<view v-if="isToday" class="glass cal-card" :class="'guide-' + cal.status" @click="openCalendar">
+				<view class="guide-mark"><text class="guide-mark-txt">历</text></view>
+				<view class="cal-info">
+					<text class="cal-name">本期活动安排</text>
+					<text class="guide-desc">{{ calCardDesc }}</text>
+				</view>
+				<text class="cal-arrow">›</text>
+			</view>
+
+			<view class="sheet-mask" v-if="calOpen" @click="closeCalendar">
+				<view class="sheet glass" @click.stop>
+					<view class="sheet-head">
+						<text class="sheet-title">国服活动日历</text>
+						<view class="sheet-close" @click="closeCalendar">
+							<text class="sheet-close-txt">关闭</text>
+						</view>
+					</view>
+
+					<view class="sheet-body">
+						<image
+							v-if="cal.url && cal.status !== 'error'"
+							class="sheet-img"
+							:src="cal.url"
+							mode="widthFix"
+							@click="previewCalendar"
+							@error="onCalImgError"
+						></image>
+						<view class="sheet-fallback" v-else>
+							<text class="fallback-text">{{ calFallbackText }}</text>
+							<view class="retry-btn" v-if="cal.status === 'error'" @click.stop="fetchCalendar">
+								<text class="retry-txt">重新加载</text>
+							</view>
+						</view>
+					</view>
+
+					<text class="sheet-tip" v-if="cal.status === 'ok'">点击图片可全屏查看</text>
+				</view>
+			</view>
+
 			<view class="sheet-mask" v-if="guideOpen" @click="closeGuide">
 				<view class="sheet glass" @click.stop>
 					<view class="sheet-head">
@@ -191,6 +236,7 @@ const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
  *                    接口无状态字段，只能靠图片特征（近白且无色）判定，见 detectEndedPoster()
  *  · mf（免费魔法）  img: /sky/mf/magic  → JPEG 900x600 魔法图
  *                    text:/sky/mf/mf     → { mf:'今日免费魔法', magic:[{text:'烟花魔法'}] }
+ *  · hd（活动日历）  json:/sky/sc/hdrl   → { code,msg,img }，img 为日历长图（无结构化活动数据）
  */
 const GUIDE_API = {
 	jl: { img: API_BASE + '/sky/sc/scjl', text: API_BASE + '/sky/sc/lzwz' },
@@ -260,6 +306,10 @@ export default {
 			],
 			guideActive: 0, // 弹层当前展示的项
 			guideOpen: false, // 弹层开关
+
+			// -------- 国服活动日历（/sky/sc/hdrl 只返回 {code,msg,img} 一张日历长图） --------
+			calOpen: false,
+			cal: { status: 'idle', url: '', err: '' },
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -334,6 +384,21 @@ export default {
 
 		guideCanRetry() {
 			return this.activeGuide.status === 'error';
+		},
+
+		/* 国服活动日历：卡片小字与弹层兜底文案 */
+		calCardDesc() {
+			const c = this.cal;
+			if (c.status === 'error') return '日历加载失败 · 点按重试';
+			if (c.status === 'loading') return '加载中…';
+			return '点击查看本期活动安排';
+		},
+
+		calFallbackText() {
+			const c = this.cal;
+			if (c.status === 'loading') return '正在加载…';
+			if (c.status === 'error') return c.err || '日历加载失败，请重试';
+			return '点击查看';
 		}
 		// #endif
 	},
@@ -997,9 +1062,9 @@ export default {
 						return;
 					}
 					if (all.length) {
-						// 兜底：只有贴纸图 → 判定为「今日暂无」，绝不把贴纸当天气图展示
+						// 兜底：没有可用图 → 「今日暂无」，这是正常状态不是报错
 						g.status = 'empty';
-						g.desc = '今日暂无红石天气图';
+						g.desc = '今日暂无红石/黑石';
 						g.err = '接口只返回了贴纸图';
 						return;
 					}
@@ -1037,6 +1102,59 @@ export default {
 				return;
 			}
 			uni.previewImage({ urls: [g.url], current: g.url });
+		},
+
+		/* ---------------- 国服活动日历 ---------------- */
+		/* 接口返回 {code,msg,img}，img 是日历长图；没有结构化活动数据，弹层展示图片 */
+		openCalendar() {
+			this.calOpen = true;
+			if (this.cal.status === 'idle' || this.cal.status === 'error') this.fetchCalendar();
+		},
+
+		closeCalendar() {
+			this.calOpen = false;
+		},
+
+		fetchCalendar() {
+			const c = this.cal;
+			c.err = '';
+			c.url = '';
+			c.status = 'loading';
+			uni.request({
+				url: API_BASE + '/sky/sc/hdrl',
+				method: 'GET',
+				data: { key: this.apiKey },
+				timeout: 12000,
+				success: res => {
+					const body = this.safeJson(res && res.data) || {};
+					const img =
+						typeof body.img === 'string' && /^https?:\/\//i.test(body.img) ? body.img : '';
+					if (img) {
+						c.url = img;
+						c.status = 'ok';
+						return;
+					}
+					c.status = 'error';
+					c.err = '日历加载失败，请重试';
+				},
+				fail: () => {
+					c.status = 'error';
+					c.err = '网络异常，请重试';
+				}
+			});
+		},
+
+		onCalImgError() {
+			this.cal.status = 'error';
+			this.cal.err = '日历图片加载失败，请重试';
+		},
+
+		previewCalendar() {
+			if (!this.cal.url || this.cal.status !== 'ok') {
+				uni.showToast({ title: '暂无可查看的图片', icon: 'none' });
+				return;
+			}
+			uni.previewImage({ urls: [this.cal.url], current: this.cal.url });
 		},
 
 		/* 判定「已结束」占位图：白底黑字、几乎没有彩色。
@@ -1786,6 +1904,50 @@ export default {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	transition: color 0.45s;
+}
+
+/* 国服活动日历：横条卡片，与攻略卡片同语言 */
+.cal-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin: 0 32rpx 8rpx;
+	padding: 24rpx 28rpx;
+	border-radius: 30rpx;
+	cursor: pointer;
+}
+
+.cal-info {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+	margin-left: 20rpx;
+}
+
+.cal-name {
+	font-size: 26rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.cal-info .guide-desc {
+	margin-top: 6rpx;
+}
+
+.cal-arrow {
+	margin-left: 12rpx;
+	font-size: 36rpx;
+	line-height: 1;
+	color: var(--text-faint);
+	transition: color 0.45s;
+}
+
+/* 失败态压暗，但保持占位高度不跳动 */
+.cal-card.guide-error {
+	opacity: 0.72;
 }
 
 /* ---------- 攻略弹层（四个入口共用一个） ---------- */
