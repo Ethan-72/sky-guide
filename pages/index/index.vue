@@ -31,18 +31,21 @@
 				<text class="hero-updated" v-if="isToday && updatedAt">更新于 {{ updatedAt }}</text>
 			</view>
 
-			<!-- 日期切换：昨天 / 今天 / 明天 -->
-			<view class="daytabs">
-				<view class="liq-thumb daytabs-thumb" :style="dayThumbStyle"></view>
-				<view class="daytab" @click="switchDay(-1)" @touchstart="switchDay(-1)">
-					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }">昨天</text>
+			<!-- 日期切换：昨天 / 今天 / 明天 + 距刷新倒计时 -->
+			<view class="daytabs-row">
+				<view class="daytabs">
+					<view class="liq-thumb daytabs-thumb" :style="dayThumbStyle"></view>
+					<view class="daytab" @click="switchDay(-1)" @touchstart="switchDay(-1)">
+						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }">昨天</text>
+					</view>
+					<view class="daytab" @click="switchDay(0)" @touchstart="switchDay(0)">
+						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 0 }">今天</text>
+					</view>
+					<view class="daytab" @click="switchDay(1)" @touchstart="switchDay(1)">
+						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }">明天</text>
+					</view>
 				</view>
-				<view class="daytab" @click="switchDay(0)" @touchstart="switchDay(0)">
-					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 0 }">今天</text>
-				</view>
-				<view class="daytab" @click="switchDay(1)" @touchstart="switchDay(1)">
-					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }">明天</text>
-				</view>
+				<text class="refresh-tip">{{ refreshTip }}</text>
 			</view>
 
 			<!-- 任务列表 -->
@@ -103,52 +106,6 @@
 				</view>
 			</view>
 
-			<!-- 国服活动日历：独立区块（hdrl 接口只返回一张日历长图） -->
-			<view class="section" v-if="isToday">
-				<text class="section-title">国服活动日历</text>
-				<text class="section-hint">点击查看</text>
-			</view>
-
-			<view v-if="isToday" class="glass cal-card" :class="'guide-' + cal.status" @click="openCalendar">
-				<view class="guide-mark"><text class="guide-mark-txt">历</text></view>
-				<view class="cal-info">
-					<text class="cal-name">本期活动安排</text>
-					<text class="guide-desc">{{ calCardDesc }}</text>
-				</view>
-				<text class="cal-arrow">›</text>
-			</view>
-
-			<view class="sheet-mask" v-if="calOpen" @click="closeCalendar">
-				<view class="sheet glass" @click.stop>
-					<view class="sheet-head">
-						<text class="sheet-title">国服活动日历</text>
-						<view class="sheet-close" @click="closeCalendar">
-							<text class="sheet-close-txt">关闭</text>
-						</view>
-					</view>
-
-					<view class="sheet-body">
-						<image
-							v-if="cal.url && cal.status !== 'error'"
-							class="sheet-img"
-							:src="cal.url"
-							mode="widthFix"
-							referrerpolicy="no-referrer"
-							@click="previewCalendar"
-							@error="onCalImgError"
-						></image>
-						<view class="sheet-fallback" v-else>
-							<text class="fallback-text">{{ calFallbackText }}</text>
-							<view class="retry-btn" v-if="cal.status === 'error'" @click.stop="fetchCalendar">
-								<text class="retry-txt">重新加载</text>
-							</view>
-						</view>
-					</view>
-
-					<text class="sheet-tip" v-if="cal.status === 'ok'">点击图片可全屏查看</text>
-				</view>
-			</view>
-
 			<view class="sheet-mask" v-if="guideOpen" @click="closeGuide">
 				<view class="sheet glass" @click.stop>
 					<view class="sheet-head">
@@ -188,6 +145,88 @@
 			</view>
 
 			<text class="footer">仅供个人游戏参考</text>
+
+			<!-- #ifdef H5 -->
+			<!-- 娱乐悬浮球：固定右下，悬在「一键复制」上方约 50rpx，不遮挡按钮 -->
+			<view
+				class="play-fab glass"
+				hover-class="play-fab-active"
+				:hover-stay-time="80"
+				@click="openPlay"
+			>
+				<text class="play-fab-txt">玩</text>
+			</view>
+
+			<!-- 娱乐抽屉：底部滑出，内部单层复用三个子视图 -->
+			<view class="play-mask" :class="{ 'play-mask-on': playOpen }" @click="closePlay">
+				<view class="play-drawer glass" :class="{ 'play-drawer-on': playOpen }" @click.stop>
+					<view class="play-grip"></view>
+
+					<view class="play-head">
+						<view class="play-back" v-if="playView !== 'list'" @click="playBack">
+							<text class="play-back-txt">‹ 返回</text>
+						</view>
+						<text class="play-title" :class="{ 'play-title-indent': playView === 'list' }">{{ playTitle }}</text>
+						<view class="play-close" @click="closePlay">
+							<text class="play-close-txt">关闭</text>
+						</view>
+					</view>
+
+					<!-- 三个入口 -->
+					<view class="play-list" v-if="playView === 'list'">
+						<view class="play-item" v-for="p in playItems" :key="p.key" @click="playTo(p.key)">
+							<view class="play-icon"><text class="play-icon-txt">{{ p.icon }}</text></view>
+							<view class="play-item-info">
+								<text class="play-item-name">{{ p.name }}</text>
+								<text class="play-item-desc">{{ p.desc }}</text>
+							</view>
+							<text class="play-arrow">›</text>
+						</view>
+					</view>
+
+					<!-- 敲木鱼 -->
+					<view class="play-body" v-else-if="playView === 'muyu'">
+						<view class="muyu-stage" @click="tapMuyu">
+							<text
+								class="muyu-pop"
+								v-for="p in muyuPops"
+								:key="p.id"
+								:style="{ left: 'calc(50% + ' + p.x + 'px)' }"
+							>{{ p.text }}</text>
+							<view class="muyu">
+								<text class="muyu-txt">木</text>
+							</view>
+							<text class="muyu-hint">点一下木鱼，功德 +1</text>
+						</view>
+						<text class="muyu-count">已积累 {{ muyuCount }} 点功德</text>
+					</view>
+
+					<!-- 光遇抽签 -->
+					<view class="play-body" v-else-if="playView === 'sign'">
+						<view class="sign-card" :class="{ 'sign-card-rolling': signRolling }">
+							<text class="sign-level" :class="signResult && !signRolling ? 'sign-' + signResult.tone : 'sign-idle'">
+								{{ signRolling ? '…' : signResult ? signResult.level : '？' }}
+							</text>
+							<text class="sign-text">{{ signRolling ? '正在摇签…' : signResult ? signResult.text : '摇一摇，看看今天的光遇运势' }}</text>
+						</view>
+						<view class="play-btn" hover-class="play-btn-active" :hover-stay-time="80" @click="drawSign">
+							<text class="play-btn-txt">{{ signResult ? '再抽一签' : '抽 个 签' }}</text>
+						</view>
+					</view>
+
+					<!-- 答案之书 -->
+					<view class="play-body" v-else>
+						<view class="answer-card" :class="{ 'answer-card-rolling': answerRolling }">
+							<text class="answer-hint">心里默念一个问题</text>
+							<text class="answer-text">{{ answerRolling ? '……' : answerText || '然后翻开这一页' }}</text>
+						</view>
+						<view class="play-btn" hover-class="play-btn-active" :hover-stay-time="80" @click="drawAnswer">
+							<text class="play-btn-txt">翻开答案之书</text>
+						</view>
+					</view>
+				</view>
+			</view>
+			<!-- #endif -->
 		</view>
 	</view>
 </template>
@@ -238,7 +277,6 @@ const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
  *                    接口无状态字段，只能靠图片特征（近白且无色）判定，见 detectEndedPoster()
  *  · mf（免费魔法）  img: /sky/mf/magic  → JPEG 900x600 魔法图
  *                    text:/sky/mf/mf     → { mf:'今日免费魔法', magic:[{text:'烟花魔法'}] }
- *  · hd（活动日历）  json:/sky/sc/hdrl   → { code,msg,img }，img 为日历长图（无结构化活动数据）
  */
 const GUIDE_API = {
 	jl: { img: API_BASE + '/sky/sc/scjl', text: API_BASE + '/sky/sc/lzwz' },
@@ -247,6 +285,10 @@ const GUIDE_API = {
 	mf: { img: API_BASE + '/sky/mf/magic', text: API_BASE + '/sky/mf/mf' }
 };
 
+/**
+ * 页面里除了任务/攻略接口，其余娱乐功能（敲木鱼 / 抽签 / 答案之书）
+ * 全部使用本地写死的数组，不发任何请求，断网也能玩。
+ */
 
 export default {
 	data() {
@@ -313,9 +355,45 @@ export default {
 			guideActive: 0, // 弹层当前展示的项
 			guideOpen: false, // 弹层开关
 
-			// -------- 国服活动日历（/sky/sc/hdrl 只返回 {code,msg,img} 一张日历长图） --------
-			calOpen: false,
-			cal: { status: 'idle', url: '', err: '' },
+			// -------- 距刷新倒计时（每天 24:00 重置） --------
+			refreshTip: '',
+			refreshTimer: 0, // setInterval 句柄，onUnload 里清掉
+
+			// -------- 娱乐悬浮球：敲木鱼 / 抽签 / 答案之书（纯本地，无请求） --------
+			playOpen: false,
+			playView: 'list', // list 入口列表 / muyu 敲木鱼 / sign 抽签 / answer 答案之书
+			muyuCount: 0, // 累计功德
+			muyuPops: [], // 飘字动画队列 { id, text, x }
+			muyuSeq: 0, // 飘字唯一 id
+			signResult: null, // { level, text, tone }
+			signRolling: false,
+			answerText: '',
+			answerRolling: false,
+			// 抽签文案：写死在本地，不请求任何接口
+			signPool: [
+				{ level: '大吉', text: '今日跑暴风眼必不掉翼', tone: 'best' },
+				{ level: '大吉', text: '先祖见你都主动伸手，蜡烛自己往兜里跳', tone: 'best' },
+				{ level: '中吉', text: '暮土一次过，冥龙今天在打瞌睡', tone: 'good' },
+				{ level: '中吉', text: '牵手好友必有回响，今日宜双人跑图', tone: 'good' },
+				{ level: '平', text: '宜挂机，忌跑图', tone: 'flat' },
+				{ level: '平', text: '适合在云野坐着看云，蜡烛不急', tone: 'flat' },
+				{ level: '小凶', text: '去暮土小心被皮皮虾盯上', tone: 'bad' },
+				{ level: '小凶', text: '今日宜绕开螃蟹堆，被撞了别怪签文没提醒', tone: 'bad' }
+			],
+			// 答案之书：万能答案，写死在本地
+			answerPool: [
+				'别想了，去跑图吧',
+				'是的',
+				'再等等',
+				'绝对不行',
+				'今天没戏，明天再来',
+				'你心里其实已经有答案了',
+				'会有人牵你的手',
+				'放手吧，前面还有更好的',
+				'就现在，别犹豫',
+				'换个方向试试'
+			],
+			muyuWords: ['功德 +1', '烛火 +1', '心诚则灵 +1'],
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -380,6 +458,22 @@ export default {
 			return this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
 		},
 
+		/* -------- 娱乐抽屉 -------- */
+		playTitle() {
+			if (this.playView === 'muyu') return '敲木鱼';
+			if (this.playView === 'sign') return '光遇抽签';
+			if (this.playView === 'answer') return '答案之书';
+			return '歇一会儿';
+		},
+
+		playItems() {
+			return [
+				{ key: 'muyu', icon: '木', name: '敲木鱼', desc: '点一下，功德 +1' },
+				{ key: 'sign', icon: '签', name: '光遇抽签', desc: '今日运势，玄学一把' },
+				{ key: 'answer', icon: '书', name: '答案之书', desc: '心里默念问题，翻开一页' }
+			];
+		},
+
 		// #ifdef H5
 		activeGuide() {
 			return this.guides[this.guideActive] || { name: '', desc: '', status: 'idle', url: '', err: '' };
@@ -397,27 +491,18 @@ export default {
 
 		guideCanRetry() {
 			return this.activeGuide.status === 'error';
-		},
-
-		/* 国服活动日历：卡片小字与弹层兜底文案 */
-		calCardDesc() {
-			const c = this.cal;
-			if (c.status === 'error') return '日历加载失败 · 点按重试';
-			if (c.status === 'empty') return c.err || '暂无活动日历';
-			if (c.status === 'loading') return '加载中…';
-			return '点击查看本期活动安排';
-		},
-
-		calFallbackText() {
-			const c = this.cal;
-			if (c.status === 'loading') return '正在加载…';
-			if (c.status === 'error') return c.err || '日历加载失败，请重试';
-			return '点击查看';
 		}
 		// #endif
 	},
 
 	onLoad() {
+		// 活动日历功能已整体下线，清掉以前版本留下的缓存，避免占空间
+		try {
+			uni.removeStorageSync('sky_wiki_cal_v1');
+		} catch (e) {
+			// 没有旧缓存或存储不可用都无所谓
+		}
+
 		// 主题：用户手动切换过就尊重手动选择，否则按当前时间自动（白天白、夜里黑）
 		const cachedMode = uni.getStorageSync(MODE_KEY);
 		const cached = uni.getStorageSync(CACHE_KEY);
@@ -455,6 +540,18 @@ export default {
 		// 复刻先祖若处于休赛期，卡片直接标「本期已结束」
 		this.precheckEndedGuide();
 		// #endif
+
+		// 距刷新倒计时：先算一次，之后每 20 秒刷新（跨整分钟才变，20 秒足够且不费电）
+		this.tickRefresh();
+		if (this.refreshTimer) clearInterval(this.refreshTimer);
+		this.refreshTimer = setInterval(() => this.tickRefresh(), 20000);
+	},
+
+	onUnload() {
+		if (this.refreshTimer) {
+			clearInterval(this.refreshTimer);
+			this.refreshTimer = 0;
+		}
 	},
 
 	// 回到前台：①自动模式按当前时间重新判定主题 ②数据过期则静默重拉
@@ -1008,7 +1105,7 @@ export default {
 			this.posterError = true;
 		},
 
-		/* ---------------- 一键复制 ---------------- */
+		/* ---------------- 一键复制（排版成适合分享的文案） ---------------- */
 		copyTasks() {
 			// 复制的是当前正在看的这一天（今天 / 昨天 / 明天）
 			const list = this.displayTasks;
@@ -1017,13 +1114,101 @@ export default {
 				return;
 			}
 
-			const body = list.map((t, i) => `${i + 1}. ${t.text}`).join('\n');
-			const content = `【${this.heroTitle}】${this.viewDate}\n${body}\n数据来源：@今天游离翻车了吗`;
+			const d = new Date();
+			d.setDate(d.getDate() + this.dayOffset);
+			const dateStr = d.getMonth() + 1 + '月' + d.getDate() + '日';
+
+			const lines = ['🌟光遇每日任务 | ' + dateStr];
+			list.forEach((t, i) => lines.push(`${i + 1}. ${t.text}`));
+			// 季蜡只有「今天」有数据，没有就整行不出现
+			if (this.dayOffset === 0 && this.jlToday) {
+				lines.push('🕯️今日季蜡位置：' + this.jlToday);
+			}
+			lines.push('—— 记得去方舟领免费魔法哦！');
 
 			uni.setClipboardData({
-				data: content,
-				success: () => uni.showToast({ title: '任务文本已复制', icon: 'none' })
+				data: lines.join('\n'),
+				success: () => uni.showToast({ title: '文案已复制，快去分享吧！', icon: 'none' })
 			});
+		},
+
+		/* ---------------- 距刷新倒计时（到今晚 24:00） ---------------- */
+		tickRefresh() {
+			const now = new Date();
+			const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+			const left = Math.max(0, next.getTime() - now.getTime());
+			const totalMin = Math.floor(left / 60000);
+			const h = Math.floor(totalMin / 60);
+			const m = totalMin % 60;
+			this.refreshTip = h > 0 ? `距刷新 ${h}小时${m}分` : `距刷新 ${m}分`;
+		},
+
+		/* ---------------- 娱乐抽屉：敲木鱼 / 抽签 / 答案之书 ---------------- */
+		openPlay() {
+			this.playView = 'list';
+			this.playOpen = true;
+		},
+
+		closePlay() {
+			this.playOpen = false;
+		},
+
+		playTo(view) {
+			this.playView = view;
+		},
+
+		playBack() {
+			this.playView = 'list';
+		},
+
+		/* 敲木鱼：本地累加 + 飘字 + 震动，不发任何请求 */
+		tapMuyu() {
+			this.muyuCount = this.muyuCount + 1;
+			const words = this.muyuWords;
+			const id = ++this.muyuSeq;
+			this.muyuPops.push({
+				id,
+				text: words[Math.floor(Math.random() * words.length)],
+				x: Math.round((Math.random() * 2 - 1) * 44)
+			});
+			setTimeout(() => {
+				this.muyuPops = this.muyuPops.filter(p => p.id !== id);
+			}, 1100);
+			this.buzz();
+		},
+
+		/* 光遇抽签：从本地签池随机 */
+		drawSign() {
+			if (this.signRolling) return;
+			this.signRolling = true;
+			this.signResult = null;
+			this.buzz();
+			setTimeout(() => {
+				const pool = this.signPool;
+				this.signResult = pool[Math.floor(Math.random() * pool.length)];
+				this.signRolling = false;
+			}, 420);
+		},
+
+		/* 答案之书：从本地方案池随机 */
+		drawAnswer() {
+			if (this.answerRolling) return;
+			this.answerRolling = true;
+			this.answerText = '';
+			setTimeout(() => {
+				const pool = this.answerPool;
+				this.answerText = pool[Math.floor(Math.random() * pool.length)];
+				this.answerRolling = false;
+			}, 460);
+		},
+
+		/* 轻震动：H5 需系统允许，失败就静默忽略，不影响任何逻辑 */
+		buzz() {
+			try {
+				uni.vibrateShort({ type: 'light', fail: () => {} });
+			} catch (e) {
+				// 不支持震动的设备直接跳过
+			}
 		},
 
 		nowText() {
@@ -1164,126 +1349,6 @@ export default {
 				return;
 			}
 			uni.previewImage({ urls: [g.url], current: g.url });
-		},
-
-		/* ---------------- 国服活动日历 ---------------- */
-		/* 接口返回 {code,msg,img}，img 是日历长图；没有结构化活动数据，弹层展示图片 */
-		openCalendar() {
-			this.calOpen = true;
-			// 空态也允许重试：接口哪天补了数据，点开就能看到
-			if (this.cal.status !== 'loading' && this.cal.status !== 'ok') this.fetchCalendar();
-		},
-
-		closeCalendar() {
-			this.calOpen = false;
-		},
-
-		fetchCalendar() {
-			const c = this.cal;
-			c.err = '';
-			c.url = '';
-			c.status = 'loading';
-			// 关键：必须带 type=json，否则接口 302 跳到 v.t1qq.com（该域名没有 CORS 头），
-			// 浏览器 XHR 跟随重定向会被拦，直接走 fail → 「网络异常」
-			uni.request({
-				url: API_BASE + '/sky/sc/hdrl',
-				method: 'GET',
-				data: { key: this.apiKey, type: 'json' },
-				timeout: 12000,
-				success: res => {
-					const body = this.safeJson(res && res.data) || {};
-					const img =
-						typeof body.img === 'string' && /^https?:\/\//i.test(body.img) ? body.img : '';
-					this.resolveCalendarImg(img || this.calendarImgUrl());
-				},
-				fail: () => {
-					// 网络层失败也别空着：直接用 type=img 的图片地址兜底
-					this.resolveCalendarImg(this.calendarImgUrl());
-				}
-			});
-		},
-
-		/* 拿到图片地址后先鉴定是不是「暂无活动日历」占位图（白底黑字、无彩色）。
-		 * 真图在 v.t1qq.com，该域名没有 CORS 头，直接画 canvas 会污染读不了像素，
-		 * 所以借 images.weserv.nl（带 Access-Control-Allow-Origin: *）取一份缩略像素判定；
-		 * 代理失败或读不到像素时一律按正常图展示，宁可多显示也不误伤。 */
-		resolveCalendarImg(url) {
-			const c = this.cal;
-			c.url = url;
-			this.detectCalendarPlaceholder(url).then(placeholder => {
-				if (placeholder) {
-					// 接口侧今天确实没有日历数据（t1qq 返回的就是占位图）
-					c.url = '';
-					c.status = 'empty';
-					c.err = '接口暂无活动日历数据';
-				} else {
-					c.status = 'ok';
-				}
-			});
-		},
-
-		calendarImgUrl() {
-			return API_BASE + '/sky/sc/hdrl?key=' + this.apiKey + '&type=img';
-		},
-
-		detectCalendarPlaceholder(url) {
-			return new Promise(resolve => {
-				if (typeof document === 'undefined' || typeof Image === 'undefined') {
-					resolve(false);
-					return;
-				}
-				const m = /^https?:\/\/([^/]+)(\/[^?#]*)/.exec(url);
-				if (!m) {
-					resolve(false);
-					return;
-				}
-				const img = new Image();
-				img.crossOrigin = 'anonymous';
-				img.onload = () => {
-					try {
-						const size = 24;
-						const cv = document.createElement('canvas');
-						cv.width = size;
-						cv.height = size;
-						const ctx = cv.getContext('2d');
-						ctx.drawImage(img, 0, 0, size, size);
-						const d = ctx.getImageData(0, 0, size, size).data;
-						let lum = 0;
-						let colorful = 0;
-						let n = 0;
-						for (let p = 0; p < d.length; p += 4) {
-							const r = d[p];
-							const gg = d[p + 1];
-							const b = d[p + 2];
-							lum += 0.299 * r + 0.587 * gg + 0.114 * b;
-							// 彩色像素（色条/图标）占比：占位图几乎为 0
-							if (Math.max(r, gg, b) - Math.min(r, gg, b) > 40) colorful++;
-							n++;
-						}
-						resolve(lum / n > 200 && colorful / n < 0.015);
-					} catch (e) {
-						resolve(false);
-					}
-				};
-				img.onerror = () => resolve(false);
-				img.src =
-					'https://images.weserv.nl/?url=' +
-					encodeURIComponent(m[1] + m[2]) +
-					'&w=192&output=jpg';
-			});
-		},
-
-		onCalImgError() {
-			this.cal.status = 'error';
-			this.cal.err = '日历图片加载失败，请重试';
-		},
-
-		previewCalendar() {
-			if (!this.cal.url || this.cal.status !== 'ok') {
-				uni.showToast({ title: '暂无可查看的图片', icon: 'none' });
-				return;
-			}
-			uni.previewImage({ urls: [this.cal.url], current: this.cal.url });
 		},
 
 		/* 判定「已结束」占位图：白底黑字、几乎没有彩色。
@@ -1686,12 +1751,20 @@ export default {
 	font-weight: 600;
 }
 
-/* ---------- 日期切换（昨天 / 今天 / 明天） ---------- */
+/* ---------- 日期切换（昨天 / 今天 / 明天）+ 距刷新 ---------- */
+.daytabs-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 24rpx;
+}
+
 .daytabs {
 	position: relative;
 	display: flex;
+	flex: 1;
+	min-width: 0;
 	align-items: center;
-	margin-bottom: 24rpx;
 	padding: 5rpx;
 	border-radius: 999rpx;
 	overflow: hidden;
@@ -1700,6 +1773,18 @@ export default {
 	-webkit-backdrop-filter: blur(18px) saturate(180%);
 	backdrop-filter: blur(18px) saturate(180%);
 	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
+}
+
+/* 胶囊右侧的倒计时：不参与弹性布局，压缩时也不换行 */
+.refresh-tip {
+	flex-shrink: 0;
+	margin-left: 18rpx;
+	font-size: 20rpx;
+	letter-spacing: 1rpx;
+	line-height: 1.2;
+	white-space: nowrap;
+	color: var(--text-faint);
+	transition: color 0.45s;
 }
 
 .daytabs-thumb {
@@ -2046,50 +2131,6 @@ export default {
 	transition: color 0.45s;
 }
 
-/* 国服活动日历：横条卡片，与攻略卡片同语言 */
-.cal-card {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin: 0 32rpx 8rpx;
-	padding: 24rpx 28rpx;
-	border-radius: 30rpx;
-	cursor: pointer;
-}
-
-.cal-info {
-	display: flex;
-	flex-direction: column;
-	flex: 1;
-	min-width: 0;
-	margin-left: 20rpx;
-}
-
-.cal-name {
-	font-size: 26rpx;
-	font-weight: 600;
-	letter-spacing: 1rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-.cal-info .guide-desc {
-	margin-top: 6rpx;
-}
-
-.cal-arrow {
-	margin-left: 12rpx;
-	font-size: 36rpx;
-	line-height: 1;
-	color: var(--text-faint);
-	transition: color 0.45s;
-}
-
-/* 失败态压暗，但保持占位高度不跳动 */
-.cal-card.guide-error {
-	opacity: 0.72;
-}
-
 /* ---------- 攻略弹层（四个入口共用一个） ---------- */
 .sheet-mask {
 	position: fixed;
@@ -2169,5 +2210,404 @@ export default {
 	text-align: center;
 	font-size: 20rpx;
 	color: var(--text-faint);
+}
+
+/* ---------- 娱乐悬浮球 ---------- */
+/* 位置：右侧固定，距底 244rpx。一键复制按钮在文档流里，页面滑到底时
+   按钮占据距底 124rpx ~ 224rpx 这一段，所以球体（244 ~ 348rpx）落在
+   按钮正上方，留 20rpx 空隙，既不遮按钮也不误触。z-index 低于所有弹层。 */
+.play-fab {
+	position: fixed;
+	right: 28rpx;
+	bottom: calc(env(safe-area-inset-bottom) + 244rpx);
+	z-index: 70;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 104rpx;
+	height: 104rpx;
+	border-radius: 50%;
+	transition: transform 0.16s ease, opacity 0.16s ease;
+}
+
+.play-fab-active {
+	transform: scale(0.94);
+	opacity: 0.9;
+}
+
+.play-fab-txt {
+	font-size: 32rpx;
+	font-weight: 600;
+	letter-spacing: 2rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+/* ---------- 娱乐抽屉 ---------- */
+.play-mask {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 90;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	background-color: rgba(0, 0, 0, 0.42);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.28s ease;
+}
+
+.play-mask-on {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.play-drawer {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-height: 78vh;
+	padding: 14rpx 32rpx calc(30rpx + env(safe-area-inset-bottom));
+	box-sizing: border-box;
+	border-radius: 44rpx 44rpx 0 0;
+	/* 上滑带一点过冲，像被手指弹出来的液态玻璃 */
+	transform: translate3d(0, 104%, 0) scale(0.98);
+	transition: transform 0.46s cubic-bezier(0.22, 1.32, 0.36, 1);
+	will-change: transform;
+}
+
+.play-drawer-on {
+	transform: translate3d(0, 0, 0) scale(1);
+}
+
+.play-grip {
+	width: 72rpx;
+	height: 8rpx;
+	margin: 0 auto 16rpx;
+	border-radius: 999rpx;
+	background-color: var(--text);
+	opacity: 0.16;
+}
+
+.play-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 56rpx;
+	margin-bottom: 20rpx;
+}
+
+.play-back,
+.play-close {
+	flex-shrink: 0;
+	width: 110rpx;
+}
+
+.play-close {
+	text-align: right;
+}
+
+.play-back-txt {
+	font-size: 24rpx;
+	letter-spacing: 1rpx;
+	color: var(--accent);
+}
+
+.play-close-txt {
+	font-size: 24rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-faint);
+}
+
+.play-title {
+	flex: 1;
+	text-align: center;
+	font-size: 30rpx;
+	font-weight: 600;
+	letter-spacing: 2rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+/* 入口列表 */
+.play-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.play-item {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 16rpx;
+	padding: 22rpx 24rpx;
+	border-radius: 30rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: rgba(255, 255, 255, 0.10);
+	transition: transform 0.18s ease, background-color 0.2s ease;
+}
+
+.play-item:active {
+	transform: scale(0.988);
+	background-color: rgba(255, 255, 255, 0.16);
+}
+
+.play-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 76rpx;
+	height: 76rpx;
+	border-radius: 26rpx;
+	background-image: linear-gradient(150deg, var(--btn-a) 0%, var(--btn-b) 100%);
+	box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
+}
+
+.play-icon-txt {
+	font-size: 28rpx;
+	font-weight: 600;
+	color: var(--btn-txt);
+}
+
+.play-item-info {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+	margin-left: 20rpx;
+}
+
+.play-item-name {
+	font-size: 27rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.play-item-desc {
+	margin-top: 6rpx;
+	font-size: 21rpx;
+	color: var(--text-faint);
+	transition: color 0.45s;
+}
+
+.play-arrow {
+	margin-left: 12rpx;
+	font-size: 34rpx;
+	line-height: 1;
+	color: var(--text-faint);
+}
+
+/* 子视图通用 */
+.play-body {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 6rpx 0 4rpx;
+}
+
+.play-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 92rpx;
+	margin-top: 32rpx;
+	border-radius: 999rpx;
+	background-image: linear-gradient(180deg, var(--btn-a) 0%, var(--btn-b) 100%);
+	box-shadow: 0 8px 22px rgba(10, 60, 140, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.5);
+	transition: transform 0.16s ease, opacity 0.16s ease;
+}
+
+.play-btn-active {
+	transform: scale(0.975);
+	opacity: 0.9;
+}
+
+.play-btn-txt {
+	font-size: 28rpx;
+	font-weight: 600;
+	letter-spacing: 4rpx;
+	color: var(--btn-txt);
+}
+
+/* 敲木鱼 */
+.muyu-stage {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 360rpx;
+}
+
+.muyu {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 212rpx;
+	height: 212rpx;
+	border-radius: 50%;
+	background-image: radial-gradient(circle at 34% 28%, #916740 0%, #5b3a1e 62%, #3d240e 100%);
+	box-shadow: 0 18rpx 40rpx rgba(0, 0, 0, 0.34), inset 0 2rpx 0 rgba(255, 255, 255, 0.32);
+	transition: transform 0.12s ease;
+}
+
+.muyu-stage:active .muyu {
+	transform: scale(0.93);
+}
+
+.muyu-txt {
+	font-size: 64rpx;
+	font-weight: 600;
+	letter-spacing: 4rpx;
+	color: rgba(255, 255, 255, 0.86);
+}
+
+.muyu-hint {
+	margin-top: 24rpx;
+	font-size: 22rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-faint);
+	transition: color 0.45s;
+}
+
+.muyu-count {
+	margin-top: 6rpx;
+	font-size: 22rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-dim);
+	transition: color 0.45s;
+}
+
+.muyu-pop {
+	position: absolute;
+	top: 44%;
+	transform: translate(-50%, 0);
+	font-size: 24rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	white-space: nowrap;
+	color: var(--accent);
+	pointer-events: none;
+	animation: muyu-pop 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes muyu-pop {
+	0% {
+		opacity: 0;
+		transform: translate(-50%, 12rpx) scale(0.8);
+	}
+	18% {
+		opacity: 1;
+		transform: translate(-50%, -18rpx) scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: translate(-50%, -150rpx) scale(1.05);
+	}
+}
+
+/* 抽签 */
+.sign-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-height: 300rpx;
+	padding: 40rpx 30rpx;
+	box-sizing: border-box;
+	border-radius: 34rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: rgba(255, 255, 255, 0.10);
+	transition: transform 0.32s cubic-bezier(0.2, 1.3, 0.4, 1), opacity 0.32s ease;
+}
+
+.sign-card-rolling {
+	transform: scale(0.97) rotate(-1.2deg);
+	opacity: 0.72;
+}
+
+.sign-level {
+	font-size: 46rpx;
+	font-weight: 700;
+	letter-spacing: 8rpx;
+	transition: color 0.3s ease;
+}
+
+.sign-idle {
+	color: var(--text-faint);
+}
+
+.sign-best {
+	color: #f5c451;
+}
+
+.sign-good {
+	color: #5aa9ff;
+}
+
+.sign-flat {
+	color: var(--text-dim);
+}
+
+.sign-bad {
+	color: #ff7a7a;
+}
+
+.sign-text {
+	margin-top: 22rpx;
+	text-align: center;
+	font-size: 26rpx;
+	line-height: 1.55;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+/* 答案之书 */
+.answer-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-height: 300rpx;
+	padding: 40rpx 34rpx;
+	box-sizing: border-box;
+	border-radius: 34rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.05) 100%);
+	transition: transform 0.32s cubic-bezier(0.2, 1.3, 0.4, 1), opacity 0.32s ease;
+}
+
+.answer-card-rolling {
+	transform: scale(0.97);
+	opacity: 0.68;
+}
+
+.answer-hint {
+	font-size: 21rpx;
+	letter-spacing: 3rpx;
+	color: var(--text-faint);
+	transition: color 0.45s;
+}
+
+.answer-text {
+	margin-top: 24rpx;
+	text-align: center;
+	font-size: 34rpx;
+	font-weight: 600;
+	line-height: 1.45;
+	letter-spacing: 2rpx;
+	color: var(--text);
+	transition: color 0.45s;
 }
 </style>
