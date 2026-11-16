@@ -44,26 +44,50 @@ npm run build:h5            # 构建 H5
 
 ## 接口与代理
 
-前端所有请求都走相对路径 `/api`，不再出现 `https://api.t1qq.com` 绝对域名：
+接口基地址由 `VITE_API_BASE` 控制，默认相对路径 `/api`：
 
-| 环境 | 转发方式 |
-|---|---|
-| 本地 `npm run dev:h5` | `vite.config.js > server.proxy` 转发到 `https://api.t1qq.com` |
-| 线上 Vercel | `vercel.json > rewrites` 把 `/api/:path*` 转发到 `https://api.t1qq.com/api/:path*` |
+| 环境 | 接口地址 | 转发方式 |
+|---|---|---|
+| 本地 `npm run dev:h5` | `/api` | `vite.config.js > server.proxy` 转发到 `https://api.t1qq.com` |
+| Vercel | `/api` | `vercel.json > rewrites` 把 `/api/:path*` 转发到 `https://api.t1qq.com/api/:path*` |
+| GitHub Pages | `https://api.t1qq.com/api` | 静态托管没有反向代理，构建时注入绝对地址（接口 `Access-Control-Allow-Origin: *`） |
 
-好处：不触发跨域、换域名只改一处、代码里没有硬编码域名。
+好处：默认不触发跨域、换域名只改一处；只有纯静态托管才需要绝对地址。
+
+## 线上地址
+
+**GitHub Pages（当前在线）**：https://ethan-72.github.io/sky-guide/
+
+## 部署到 GitHub Pages
+
+Pages 项目页的地址带子路径 `/sky-guide/`，因此资源基路径和接口地址都要特殊处理，
+已封装成两条命令：
+
+```bash
+npm run build:h5:pages   # 基路径 /sky-guide/ + 接口绝对地址
+set GH_TOKEN=gho_xxx     # 或 export GH_TOKEN=...
+npm run publish:pages    # 推送到 gh-pages 分支（走 GitHub API）
+```
+
+> **为什么用 API 而不是 `git push`**：部分网络环境下 `github.com:443` 被出口代理拦截
+> （报 `CONNECT tunnel failed, response 502`），只有 `api.github.com` 可访问，
+> 所以 `scripts/publish-pages.js` 用 Git Data API 写 blob/tree/commit/ref。
+> 换到网络正常的机器，直接 `git push origin HEAD:gh-pages` 也可以。
+>
+> Pages 首次发布后需在仓库 Settings → Pages 里确认来源为 `gh-pages` 分支根目录
+> （或调用 `POST /repos/{owner}/{repo}/pages` 开启，本项目已开启）。
 
 ## 部署到 Vercel（H5）
 
-1. 推到 GitHub 仓库
-2. Vercel → Add New → Project → Import 该仓库
-3. 构建设置（`vercel.json` 已写好，Vercel 会自动读取，无需手填）：
+1. Vercel → Add New → Project → Import `Ethan-72/sky-guide`
+2. 构建设置（`vercel.json` 已写好，Vercel 会自动读取，无需手填）：
    - Build Command：`npm run build:h5`
    - Output Directory：`dist/build/h5`
-4. Deploy 完成后，`https://xxx.vercel.app` 即为线上地址
+3. Deploy 完成后，`https://xxx.vercel.app` 即为线上地址
 
 > 注意：构建脚本必须能在 Linux 运行。本项目已把原来的 `set UNI_INPUT_DIR=%CD%&&` 替换为
 > `node scripts/run-uni.js`，否则 Vercel 上会因 `set: command not found` 构建失败。
+> Vercel 版本用 `npm run build:h5`（基路径 `/`），**不要**用 `build:h5:pages`。
 
 
 ## 微信小程序

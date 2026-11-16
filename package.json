@@ -9,7 +9,8 @@
 		"dev:mp-weixin": "node scripts/run-uni.js -p mp-weixin",
 		"build:mp-weixin": "node scripts/run-uni.js build -p mp-weixin",
 		"build:app": "node scripts/run-uni.js build -p app",
-		"build:h5:pages": "node scripts/build-pages.js"
+		"build:h5:pages": "node scripts/build-pages.js",
+		"publish:pages": "node scripts/publish-pages.js"
 	},
 	"engines": {
 		"node": ">=18"
