@@ -24,30 +24,46 @@
 
 			<!-- 标题 -->
 			<view class="hero">
-				<text class="hero-date">{{ todayText() }}</text>
-				<text class="hero-title">今日任务</text>
+				<text class="hero-date">{{ viewDate }}</text>
+				<text class="hero-title">{{ heroTitle }}</text>
 				<text class="hero-source">数据来源：@今天游离翻车了吗</text>
-				<text class="hero-updated" v-if="updatedAt">更新于 {{ updatedAt }}</text>
+				<text class="hero-updated" v-if="isToday && updatedAt">更新于 {{ updatedAt }}</text>
+			</view>
+
+			<!-- 日期切换：昨天 / 今天 / 明天 -->
+			<view class="daytabs">
+				<view class="daytab" :class="{ 'daytab-on': dayOffset === -1 }" @click="switchDay(-1)">
+					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }">昨天</text>
+				</view>
+				<view class="daytab" :class="{ 'daytab-on': dayOffset === 0 }" @click="switchDay(0)">
+					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 0 }">今天</text>
+				</view>
+				<view class="daytab" :class="{ 'daytab-on': dayOffset === 1 }" @click="switchDay(1)">
+					<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }">明天</text>
+				</view>
 			</view>
 
 			<!-- 任务列表 -->
 			<view class="glass list">
-				<view class="task" v-for="(item, index) in tasks" :key="item.id">
+				<view class="task" v-for="(item, index) in displayTasks" :key="index">
 					<view class="badge"><text class="badge-txt">{{ pad(index + 1) }}</text></view>
 					<text class="task-text">{{ item.text }}</text>
 				</view>
-				<view class="task" v-if="loading">
+				<view class="task" v-if="isToday && loading">
 					<text class="task-text task-dim">正在读取数据…</text>
+				</view>
+				<view class="task" v-if="!displayTasks.length && !(isToday && loading)">
+					<text class="task-text task-dim">{{ emptyText }}</text>
 				</view>
 			</view>
 
-			<!-- 攻略图 -->
-			<view class="section">
+			<!-- 攻略图（仅今天有实时图，昨天/明天不展示） -->
+			<view class="section" v-if="isToday">
 				<text class="section-title">今日攻略图</text>
 				<text class="section-hint">点击放大</text>
 			</view>
 
-			<view class="glass poster-card" @click="previewPoster">
+			<view class="glass poster-card" v-if="isToday" @click="previewPoster">
 				<image
 					v-if="posterUrl && !posterError"
 					class="poster"
@@ -88,6 +104,9 @@
  */
 const CACHE_KEY = 'sky_guide_theme'; // 手动选择的主题：dark / light
 const MODE_KEY = 'sky_guide_theme_mode'; // auto=按时间自动 / manual=用户手动选过
+// 按日期存档：{ 'YYYY-MM-DD': { tasks: [{text, from}], at: 'HH:mm' } }
+// 接口只返回「今天」，所以昨天只能靠本地存档回看
+const ARCHIVE_KEY = 'sky_guide_archive';
 // 自动模式的时间分界：6:00-17:59 白色主题，18:00-5:59 黑色主题
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 18;
@@ -124,6 +143,12 @@ export default {
 			posterError: false,
 			posterLoading: true,
 			updatedAt: '',
+			lastFetchAt: 0, // 上次成功拉取任务的时间戳（毫秒）
+			lastFetchDay: '', // 上次拉取时的日期 YYYY-MM-DD，用于判断是否跨天
+
+			// -------- 日期切换 --------
+			dayOffset: 0, // -1 昨天 / 0 今天 / 1 明天
+			archivedTasks: [], // 非今天时展示的历史存档任务
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -141,6 +166,30 @@ export default {
 			if (this.posterError) return '长图加载失败，请检查网络';
 			if (this.posterLoading) return '长图加载中…';
 			return '暂无今日长图';
+		},
+
+		/* -------- 日期切换相关 -------- */
+		isToday() {
+			return this.dayOffset === 0;
+		},
+
+		viewDate() {
+			return this.dayText(this.dayOffset);
+		},
+
+		heroTitle() {
+			if (this.dayOffset === 0) return '今日任务';
+			return this.dayOffset === -1 ? '昨日任务' : '明日任务';
+		},
+
+		displayTasks() {
+			return this.isToday ? this.tasks : this.archivedTasks;
+		},
+
+		emptyText() {
+			if (this.dayOffset === 1) return '明天的任务还没公布，明天 0 点后自动更新';
+			if (this.dayOffset === -1) return '这一天没有本地存档（应用每天首次打开时会自动存档）';
+			return '暂无数据';
 		}
 	},
 
@@ -162,23 +211,44 @@ export default {
 
 		// useMock 为 false 时发起两个独立请求：文字任务 + 攻略图片
 		if (!this.useMock) {
+			// 先记下时间，避免 onLoad 之后紧跟的 onShow 又触发一次重复请求
+			this.lastFetchAt = Date.now();
+			this.lastFetchDay = this.todayText();
 			this.fetchTasks();
 			this.fetchPoster();
 		}
 	},
 
-	// 回到前台时，自动模式按当前时间重新判定（如傍晚从白转黑）
+	// 回到前台：①自动模式按当前时间重新判定主题 ②数据过期则静默重拉
 	onShow() {
-		if (this.themeMode !== 'auto') return;
-		const t = this.autoTheme();
-		if (t !== this.theme) {
-			this.theme = t;
-			this.applyThemeBackground();
+		if (this.themeMode === 'auto') {
+			const t = this.autoTheme();
+			if (t !== this.theme) {
+				this.theme = t;
+				this.applyThemeBackground();
+			}
+		}
+
+		// 数据新鲜度检查：从后台切回来时，只要「跨天」或「超过 5 分钟没更新」就静默重拉。
+		// 否则手机挂后台一整夜，早上打开看到的还是昨天的任务。
+		if (!this.isToday) return; // 正在看昨天/明天时不打扰
+		if (this.useMock || this.loading) return;
+		const dayChanged = this.todayText() !== this.lastFetchDay;
+		const tooOld = Date.now() - this.lastFetchAt > 5 * 60 * 1000;
+		if (dayChanged || tooOld) {
+			this.fetchTasks(false, true);
+			this.fetchPoster(false, true);
 		}
 	},
 
 	// 下拉刷新（需在 pages.json 中开启 enablePullDownRefresh）
 	onPullDownRefresh() {
+		// 看昨天/明天时只重新读本地存档，不请求接口
+		if (!this.isToday) {
+			this.loadArchive();
+			uni.stopPullDownRefresh();
+			return;
+		}
 		this.refresh();
 	},
 
@@ -201,6 +271,59 @@ export default {
 	methods: {
 		pad(n) {
 			return n < 10 ? '0' + n : '' + n;
+		},
+
+		/* ---------------- 日期切换与本地存档 ---------------- */
+		/* 取相对今天偏移 N 天的日期字符串：0=今天，-1=昨天，1=明天 */
+		dayText(offset) {
+			const d = new Date();
+			d.setDate(d.getDate() + offset);
+			return `${d.getFullYear()}-${this.pad(d.getMonth() + 1)}-${this.pad(d.getDate())}`;
+		},
+
+		switchDay(offset) {
+			this.dayOffset = offset;
+			if (offset !== 0) this.loadArchive();
+		},
+
+		/* 读取某一天的历史存档（没有就展示空态提示） */
+		loadArchive() {
+			let archive = {};
+			try {
+				archive = uni.getStorageSync(ARCHIVE_KEY) || {};
+			} catch (e) {
+				archive = {};
+			}
+			const rec = archive[this.viewDate];
+			const list = rec && Array.isArray(rec.tasks) ? rec.tasks : [];
+			this.archivedTasks = list.map((t, i) => ({
+				id: i + 1,
+				text: t.text || '',
+				from: t.from || ''
+			}));
+		},
+
+		/* 每次成功拿到今日任务就存一份档，供以后回看 */
+		saveArchive() {
+			if (!this.tasks.length) return;
+			let archive = {};
+			try {
+				archive = uni.getStorageSync(ARCHIVE_KEY) || {};
+			} catch (e) {
+				archive = {};
+			}
+			archive[this.todayText()] = {
+				tasks: this.tasks.map(t => ({ text: t.text, from: t.from || '' })),
+				at: this.nowText()
+			};
+			// 只保留最近 30 天，避免本地存储无限增长
+			const days = Object.keys(archive).sort();
+			while (days.length > 30) delete archive[days.shift()];
+			try {
+				uni.setStorageSync(ARCHIVE_KEY, archive);
+			} catch (e) {
+				// 存储写满时忽略，不影响主流程
+			}
 		},
 
 		/* ---------------- 主题切换 ---------------- */
@@ -274,8 +397,8 @@ export default {
 		},
 
 		/* ---------------- 真实接口 ---------------- */
-		fetchTasks(isPullDown) {
-			if (!isPullDown) this.loading = true;
+		fetchTasks(isPullDown, silent) {
+			if (!isPullDown && !silent) this.loading = true;
 
 			uni.request({
 				url: this.apiUrl,
@@ -283,6 +406,10 @@ export default {
 				data: { key: this.apiKey },
 				timeout: 10000,
 				success: res => {
+					// 记录拉取时间，供 onShow 判断数据是否过期
+					this.lastFetchAt = Date.now();
+					this.lastFetchDay = this.todayText();
+
 					// 该接口 Content-Type 为 text/json，部分环境会当成字符串返回，
 					// 这里统一解析一次，避免 body.rw 取不到而误回退 Mock。
 					let body = res && res.data;
@@ -303,6 +430,8 @@ export default {
 							from: item.type || '每日任务'
 						}));
 						this.updatedAt = this.nowText();
+						// 存档一份，供以后「昨天」回看
+						this.saveArchive();
 						// 攻略图片由独立的 scrw 接口获取，这里不处理
 					} else {
 						uni.showToast({ title: '数据格式异常，已回退 Mock', icon: 'none' });
@@ -327,9 +456,10 @@ export default {
 		 *   · Content-Type 含 image → 直接把该 URL 赋给 posterUrl
 		 *   · 若接口将来改成返回 JSON → 从 img / pic / url / data 里提取真实地址
 		 */
-		fetchPoster(isPullDown) {
+		fetchPoster(isPullDown, silent) {
 			const url = this.scrwUrl + '?key=' + this.scrwKey;
-			this.posterLoading = true;
+			// 静默刷新时不显示「长图加载中…」，避免切回前台闪一下占位文案
+			if (!silent) this.posterLoading = true;
 			this.posterError = false;
 
 			uni.request({
@@ -427,13 +557,15 @@ export default {
 
 		/* ---------------- 一键复制 ---------------- */
 		copyTasks() {
-			if (!this.tasks.length) {
-				uni.showToast({ title: '暂无任务', icon: 'none' });
+			// 复制的是当前正在看的这一天（今天 / 昨天 / 明天）
+			const list = this.displayTasks;
+			if (!list.length) {
+				uni.showToast({ title: '这一天暂无任务', icon: 'none' });
 				return;
 			}
 
-			const body = this.tasks.map((t, i) => `${i + 1}. ${t.text}`).join('\n');
-			const content = `【今日任务】${this.todayText()}\n${body}\n数据来源：@今天游离翻车了吗`;
+			const body = list.map((t, i) => `${i + 1}. ${t.text}`).join('\n');
+			const content = `【${this.heroTitle}】${this.viewDate}\n${body}\n数据来源：@今天游离翻车了吗`;
 
 			uni.setClipboardData({
 				data: content,
@@ -656,6 +788,44 @@ export default {
 }
 
 .seg-txt-on {
+	color: #0E1116;
+	font-weight: 600;
+}
+
+/* ---------- 日期切换（昨天 / 今天 / 明天） ---------- */
+.daytabs {
+	display: flex;
+	align-items: center;
+	margin-bottom: 24rpx;
+	padding: 5rpx;
+	border-radius: 999rpx;
+	background-color: var(--seg-bg);
+	border: 1rpx solid var(--glass-bd);
+}
+
+.daytab {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 62rpx;
+	border-radius: 999rpx;
+	transition: background-color 0.3s ease;
+}
+
+.daytab-on {
+	background-color: var(--seg-thumb);
+	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.18);
+}
+
+.daytab-txt {
+	font-size: 24rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-dim);
+	transition: color 0.3s ease;
+}
+
+.daytab-txt-on {
 	color: #0E1116;
 	font-weight: 600;
 }
