@@ -12,6 +12,10 @@ if (!process.env.UNI_INPUT_DIR) {
 }
 
 export default defineConfig({
+	// 部署基路径：
+	//  · Vercel / 自定义域名 → 根路径 '/'（默认）
+	//  · GitHub Pages 项目页 → '/sky-guide/'（由 H5_BASE 环境变量注入）
+	base: process.env.H5_BASE || '/',
 	plugins: [uni()],
 	server: {
 		host: '127.0.0.1',

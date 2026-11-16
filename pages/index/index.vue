@@ -92,6 +92,11 @@ const MODE_KEY = 'sky_guide_theme_mode'; // auto=按时间自动 / manual=用户
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 18;
 
+// 接口基地址：
+//  · 有反向代理的环境（Vercel 的 rewrites / 本地 vite proxy）→ 相对路径 /api
+//  · 纯静态托管（GitHub Pages 没有代理）→ 构建时注入绝对地址 https://api.t1qq.com/api
+const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
+
 export default {
 	data() {
 		return {
@@ -105,11 +110,11 @@ export default {
 			// · 本地 H5：vite.config.js 的 server.proxy 负责转发
 			// 这样写既能绕开跨域，也不用把域名硬编码进前端代码。
 			useMock: false, // 置 true 可切回纯 Mock 演示
-			apiUrl: '/api/sky/gyrw',
+			apiUrl: API_BASE + '/sky/gyrw',
 			apiKey: 'BGqiyBXO4v8CS4JdoH7oUCcoWh',
 
 			// 攻略图片接口：直接返回图片流，URL 本身即图片地址
-			scrwUrl: '/api/sky/sc/scrw',
+			scrwUrl: API_BASE + '/sky/sc/scrw',
 			scrwKey: 'BGqiyBXO4v8CS4JdoH7oUCcoWh',
 
 			// -------- 页面数据 --------
