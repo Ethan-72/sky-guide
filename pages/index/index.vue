@@ -403,6 +403,7 @@ export default {
 		calCardDesc() {
 			const c = this.cal;
 			if (c.status === 'error') return '日历加载失败 · 点按重试';
+			if (c.status === 'empty') return c.err || '暂无活动日历';
 			if (c.status === 'loading') return '加载中…';
 			return '点击查看本期活动安排';
 		},
@@ -709,7 +710,10 @@ export default {
 					const grouped = {};
 					list.forEach(item => {
 						if (!item || !item.date || !item.quest_cn) return;
-						(grouped[item.date] = grouped[item.date] || []).push({ text: item.quest_cn, from: '' });
+						(grouped[item.date] = grouped[item.date] || []).push({
+							text: this.cleanTaskText(item.quest_cn),
+							from: ''
+						});
 					});
 
 					const tmr = grouped[tomorrow] || [];
@@ -831,11 +835,11 @@ export default {
 
 					if (Array.isArray(rw) && rw.length) {
 						// 返回数据在 rw 数组的 text 字段
-						// 第 5 项「今日季节蜡烛所在地图」不再占任务位，改到标题下方单独展示
+						// ① 抹掉 #r 等格式控制符 ② 第 5 项「今日季节蜡烛所在地图」改到标题下方单独展示
 						this.tasks = rw
 							.map((item, i) => ({
 								id: i + 1,
-								text: item.text || '',
+								text: this.cleanTaskText(item.text),
 								from: item.type || '每日任务'
 							}))
 							.filter(t => !/季节蜡烛|季蜡/.test(t.text));
@@ -857,6 +861,16 @@ export default {
 					if (isPullDown) uni.stopPullDownRefresh();
 				}
 			});
+		},
+
+		/* 清理任务文本：#r / #n 等格式控制符（接口的换行、颜色标记）和裸换行都会
+		 * 原样显示成「收集30点烛火#r」这种尾巴，这里统一抹掉 */
+		cleanTaskText(text) {
+			return String(text || '')
+				.replace(/#[a-zA-Z]/g, '')
+				.replace(/[\r\n]+/g, ' ')
+				.replace(/\s{2,}/g, ' ')
+				.trim();
 		},
 
 		/* ---------------- 季蜡位置（标题下方一行小字） ----------------
@@ -1156,7 +1170,8 @@ export default {
 		/* 接口返回 {code,msg,img}，img 是日历长图；没有结构化活动数据，弹层展示图片 */
 		openCalendar() {
 			this.calOpen = true;
-			if (this.cal.status === 'idle' || this.cal.status === 'error') this.fetchCalendar();
+			// 空态也允许重试：接口哪天补了数据，点开就能看到
+			if (this.cal.status !== 'loading' && this.cal.status !== 'ok') this.fetchCalendar();
 		},
 
 		closeCalendar() {
@@ -1179,18 +1194,29 @@ export default {
 					const body = this.safeJson(res && res.data) || {};
 					const img =
 						typeof body.img === 'string' && /^https?:\/\//i.test(body.img) ? body.img : '';
-					if (img) {
-						c.url = img;
-						c.status = 'ok';
-						return;
-					}
-					// 接口回了 200 但没有 img：退回图片直连（<image> 不需要 CORS）
-					c.url = this.calendarImgUrl();
-					c.status = 'ok';
+					this.resolveCalendarImg(img || this.calendarImgUrl());
 				},
 				fail: () => {
 					// 网络层失败也别空着：直接用 type=img 的图片地址兜底
-					c.url = this.calendarImgUrl();
+					this.resolveCalendarImg(this.calendarImgUrl());
+				}
+			});
+		},
+
+		/* 拿到图片地址后先鉴定是不是「暂无活动日历」占位图（白底黑字、无彩色）。
+		 * 真图在 v.t1qq.com，该域名没有 CORS 头，直接画 canvas 会污染读不了像素，
+		 * 所以借 images.weserv.nl（带 Access-Control-Allow-Origin: *）取一份缩略像素判定；
+		 * 代理失败或读不到像素时一律按正常图展示，宁可多显示也不误伤。 */
+		resolveCalendarImg(url) {
+			const c = this.cal;
+			c.url = url;
+			this.detectCalendarPlaceholder(url).then(placeholder => {
+				if (placeholder) {
+					// 接口侧今天确实没有日历数据（t1qq 返回的就是占位图）
+					c.url = '';
+					c.status = 'empty';
+					c.err = '接口暂无活动日历数据';
+				} else {
 					c.status = 'ok';
 				}
 			});
@@ -1198,6 +1224,53 @@ export default {
 
 		calendarImgUrl() {
 			return API_BASE + '/sky/sc/hdrl?key=' + this.apiKey + '&type=img';
+		},
+
+		detectCalendarPlaceholder(url) {
+			return new Promise(resolve => {
+				if (typeof document === 'undefined' || typeof Image === 'undefined') {
+					resolve(false);
+					return;
+				}
+				const m = /^https?:\/\/([^/]+)(\/[^?#]*)/.exec(url);
+				if (!m) {
+					resolve(false);
+					return;
+				}
+				const img = new Image();
+				img.crossOrigin = 'anonymous';
+				img.onload = () => {
+					try {
+						const size = 24;
+						const cv = document.createElement('canvas');
+						cv.width = size;
+						cv.height = size;
+						const ctx = cv.getContext('2d');
+						ctx.drawImage(img, 0, 0, size, size);
+						const d = ctx.getImageData(0, 0, size, size).data;
+						let lum = 0;
+						let colorful = 0;
+						let n = 0;
+						for (let p = 0; p < d.length; p += 4) {
+							const r = d[p];
+							const gg = d[p + 1];
+							const b = d[p + 2];
+							lum += 0.299 * r + 0.587 * gg + 0.114 * b;
+							// 彩色像素（色条/图标）占比：占位图几乎为 0
+							if (Math.max(r, gg, b) - Math.min(r, gg, b) > 40) colorful++;
+							n++;
+						}
+						resolve(lum / n > 200 && colorful / n < 0.015);
+					} catch (e) {
+						resolve(false);
+					}
+				};
+				img.onerror = () => resolve(false);
+				img.src =
+					'https://images.weserv.nl/?url=' +
+					encodeURIComponent(m[1] + m[2]) +
+					'&w=192&output=jpg';
+			});
 		},
 
 		onCalImgError() {
