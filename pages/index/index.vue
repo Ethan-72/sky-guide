@@ -24,14 +24,28 @@
 
 			<!-- 标题 -->
 			<view class="hero">
-				<text class="hero-date">{{ viewDate }}</text>
-				<text class="hero-title">{{ heroTitle }}</text>
-				<text class="hero-jl" v-if="jlLine">{{ jlLine }}</text>
+				<view class="hero-row">
+					<view class="hero-main">
+						<text class="hero-date">{{ viewDate }}</text>
+						<text class="hero-title">{{ heroTitle }}</text>
+						<text class="hero-jl" v-if="jlLine">{{ jlLine }}</text>
+					</view>
+
+					<!-- 右侧信息组：12 小时制实时时钟 + 距刷新倒计时 -->
+					<view class="hero-clock">
+						<view class="clock-row">
+							<text class="clock-mer">{{ clockMer }}</text>
+							<text class="clock-time">{{ clockTime }}</text>
+						</view>
+						<text class="clock-tip" v-if="refreshTip">{{ refreshTip }}</text>
+					</view>
+				</view>
+
 				<text class="hero-source">数据来源：@今天游离翻车了吗</text>
 				<text class="hero-updated" v-if="isToday && updatedAt">更新于 {{ updatedAt }}</text>
 			</view>
 
-			<!-- 日期切换：昨天 / 今天 / 明天 + 距刷新倒计时 -->
+			<!-- 日期切换：昨天 / 今天 / 明天 -->
 			<view class="daytabs-row">
 				<view class="daytabs">
 					<view class="liq-thumb daytabs-thumb" :style="dayThumbStyle"></view>
@@ -45,7 +59,6 @@
 						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }">明天</text>
 					</view>
 				</view>
-				<text class="refresh-tip">{{ refreshTip }}</text>
 			</view>
 
 			<!-- 任务列表 -->
@@ -416,9 +429,12 @@ export default {
 			guideActive: 0, // 弹层当前展示的项
 			guideOpen: false, // 弹层开关
 
-			// -------- 距刷新倒计时（每天 24:00 重置） --------
+			// -------- 实时时钟（12 小时制）与距刷新倒计时 --------
+			clockTime: '--:--:--',
+			clockMer: '上午',
+			clockLastSec: -1, // 上一次渲染到的整秒，用来避免每帧都触发更新
 			refreshTip: '',
-			refreshTimer: 0, // setInterval 句柄，onUnload 里清掉
+			clockTimer: 0, // rAF 不可用时的降级定时器句柄
 
 			// -------- 娱乐悬浮球：敲木鱼 / 抽签 / 答案之书 / 计算器（纯本地，无请求） --------
 			playOpen: false,
@@ -699,23 +715,33 @@ export default {
 		this.prefetchGuideTexts();
 		// 复刻先祖若处于休赛期，卡片直接标「本期已结束」
 		this.precheckEndedGuide();
+		// 首次触摸/点击就解锁音频：敲木鱼第一下即可出声（不支持的浏览器静默降级）
+		if (typeof document !== 'undefined' && document.addEventListener) {
+			const unlock = () => {
+				this.ensureAudio();
+				document.removeEventListener('pointerdown', unlock);
+				document.removeEventListener('touchstart', unlock);
+			};
+			document.addEventListener('pointerdown', unlock);
+			document.addEventListener('touchstart', unlock);
+		}
 		// #endif
 
-		// 距刷新倒计时：先算一次，之后每 20 秒刷新（跨整分钟才变，20 秒足够且不费电）
-		this.tickRefresh();
-		if (this.refreshTimer) clearInterval(this.refreshTimer);
-		this.refreshTimer = setInterval(() => this.tickRefresh(), 20000);
+		// 时钟 + 距刷新倒计时：rAF 驱动，每拍重新取系统时间（切后台回来也立刻准确）
+		this.startClock();
 	},
 
 	onUnload() {
-		if (this.refreshTimer) {
-			clearInterval(this.refreshTimer);
-			this.refreshTimer = 0;
-		}
+		this.stopClock();
+		// 页面销毁时停掉弹簧循环，避免 rAF 泄漏
+		this.stopSpring('day');
+		this.stopSpring('seg');
 	},
 
-	// 回到前台：①自动模式按当前时间重新判定主题 ②数据过期则静默重拉
+	// 回到前台：①立刻校准时钟 ②自动模式按当前时间重新判定主题 ③数据过期则静默重拉
 	onShow() {
+		this.tickClock(true);
+
 		if (this.themeMode === 'auto') {
 			const t = this.autoTheme();
 			if (t !== this.theme) {
@@ -741,12 +767,6 @@ export default {
 			this.fetchPoster(false, true);
 			this.fetchJinLa();
 		}
-	},
-
-	// 页面销毁时停掉弹簧循环，避免 rAF 泄漏
-	onUnload() {
-		this.stopSpring('day');
-		this.stopSpring('seg');
 	},
 
 	// 下拉刷新（需在 pages.json 中开启 enablePullDownRefresh）
@@ -1292,6 +1312,67 @@ export default {
 			});
 		},
 
+		/* ---------------- 实时时钟 + 距刷新倒计时 ----------------
+		 * 不用「setInterval 每秒 +1」的累加写法：那种写法在手机切后台时会被
+		 * 系统暂停，回来就会慢一大截。这里每一拍都重新 new Date() 取系统时间，
+		 * 再用 rAF 驱动（rAF 在后台自动暂停、回前台立刻恢复，第一帧就是准确时间）。
+		 * 同时监听 visibilitychange / onShow 强制补一拍，切回来零延迟对齐。 */
+		startClock() {
+			this.stopClock();
+			this.tickClock(true);
+
+			if (typeof requestAnimationFrame === 'function') {
+				const loop = () => {
+					this.tickClock();
+					this._clockRaf = requestAnimationFrame(loop);
+				};
+				this._clockRaf = requestAnimationFrame(loop);
+			} else {
+				// 非浏览器环境（小程序 / App）退回 1s 定时器，逻辑同样是每次取真实时间
+				this.clockTimer = setInterval(() => this.tickClock(true), 1000);
+			}
+
+			if (typeof document !== 'undefined' && document.addEventListener) {
+				this._visHandler = () => {
+					if (!document.hidden) this.tickClock(true);
+				};
+				document.addEventListener('visibilitychange', this._visHandler);
+			}
+		},
+
+		stopClock() {
+			if (this._clockRaf && typeof cancelAnimationFrame === 'function') {
+				cancelAnimationFrame(this._clockRaf);
+			}
+			this._clockRaf = 0;
+			if (this.clockTimer) {
+				clearInterval(this.clockTimer);
+				this.clockTimer = 0;
+			}
+			if (this._visHandler && typeof document !== 'undefined') {
+				document.removeEventListener('visibilitychange', this._visHandler);
+				this._visHandler = null;
+			}
+		},
+
+		/* force = true 时强制重算（切前台、页面显示），平时只在整秒变化时才写数据，
+		 * 避免 rAF 每帧都触发一次视图更新 */
+		tickClock(force) {
+			const now = new Date();
+			const sec = Math.floor(now.getTime() / 1000);
+			if (!force && sec === this.clockLastSec) return;
+			this.clockLastSec = sec;
+
+			const h24 = now.getHours();
+			const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+			const p2 = n => (n < 10 ? '0' + n : '' + n);
+			this.clockMer = h24 < 12 ? '上午' : '下午';
+			this.clockTime = p2(h12) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+
+			// 倒计时跟时钟同一拍走，保证两个数字永远同步
+			this.tickRefresh();
+		},
+
 		/* ---------------- 距刷新倒计时（到今晚 24:00） ---------------- */
 		tickRefresh() {
 			const now = new Date();
@@ -1348,15 +1429,29 @@ export default {
 			this.buzz();
 		},
 
+		/* 音频解锁：移动端浏览器禁止手势前出声，所以第一次点/摸页面时就把
+		 * AudioContext 建好并 resume()，之后敲木鱼第一下就能响。
+		 * 不支持或抛异常就静默降级——没有声音也绝不影响计数和动画。 */
+		ensureAudio() {
+			try {
+				if (typeof window === 'undefined') return;
+				const AC = window.AudioContext || window.webkitAudioContext;
+				if (!AC) return;
+				if (!this._ac) this._ac = new AC();
+				if (this._ac.state === 'suspended' && this._ac.resume) this._ac.resume();
+			} catch (e) {
+				// 被策略拦下 / 浏览器不支持：保持静音
+			}
+		},
+
 		/* 用 WebAudio 现场合成一记「咚」：低频正弦快速下滑 + 一小段木头脆响噪声。
 		 * 不需要任何音频文件；浏览器要求用户手势后才能出声，这里正好在点击里调用。 */
 		knock() {
 			try {
-				const AC = window.AudioContext || window.webkitAudioContext;
-				if (!AC) return;
-				if (!this._ac) this._ac = new AC();
+				this.ensureAudio();
 				const ac = this._ac;
-				if (ac.state === 'suspended') ac.resume();
+				if (!ac) return;
+				if (ac.state === 'suspended' && ac.resume) ac.resume();
 				const t = ac.currentTime;
 
 				// ① 木鱼共鸣：正弦从 220Hz 迅速落到 62Hz，短促衰减
@@ -1848,6 +1943,10 @@ export default {
 	--muyu-ink: #FFD79A;
 	--muyu-glow: rgba(255, 196, 92, 0.85);
 	--muyu-halo: rgba(255, 190, 90, 0.30);
+
+	/* 实时时钟：冷光字 + 轻微外发光 */
+	--clock-ink: #F2F4F8;
+	--clock-glow: rgba(127, 214, 255, 0.50);
 }
 
 .theme-light {
@@ -1895,6 +1994,9 @@ export default {
 	--muyu-ink: #B4691A;
 	--muyu-glow: rgba(255, 174, 66, 0.55);
 	--muyu-halo: rgba(255, 186, 96, 0.28);
+
+	--clock-ink: #0B0D12;
+	--clock-glow: rgba(10, 132, 255, 0.30);
 }
 
 .page {
@@ -2127,10 +2229,9 @@ export default {
 	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
 }
 
-/* 胶囊右侧的倒计时：不参与弹性布局，压缩时也不换行 */
-.refresh-tip {
-	flex-shrink: 0;
-	margin-left: 18rpx;
+/* 时钟下方：距刷新倒计时，与时钟右对齐成一组 */
+.clock-tip {
+	margin-top: 8rpx;
 	font-size: 20rpx;
 	letter-spacing: 1rpx;
 	line-height: 1.2;
@@ -2172,6 +2273,55 @@ export default {
 /* ---------- 标题 ---------- */
 .hero {
 	padding: 44rpx 8rpx 38rpx;
+}
+
+/* 左：日期 + 大标题 + 季蜡；右：时钟 + 倒计时（同一行，底部对齐） */
+.hero-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-end;
+	justify-content: space-between;
+}
+
+.hero-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.hero-clock {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	flex-shrink: 0;
+	margin-left: 24rpx;
+	padding-bottom: 6rpx;
+}
+
+.clock-row {
+	display: flex;
+	flex-direction: row;
+	align-items: baseline;
+}
+
+.clock-mer {
+	margin-right: 10rpx;
+	font-size: 21rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-dim);
+	transition: color 0.45s;
+}
+
+/* 数字等宽，秒数跳动时不会左右抖 */
+.clock-time {
+	font-size: 42rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	line-height: 1.1;
+	color: var(--clock-ink);
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: 'tnum' 1;
+	text-shadow: 0 0 18rpx var(--clock-glow);
+	transition: color 0.45s;
 }
 
 .hero-date {
