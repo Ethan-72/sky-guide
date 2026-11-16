@@ -131,6 +131,31 @@
 								<text class="retry-txt">重新加载</text>
 							</view>
 						</view>
+
+						<!-- 红石 / 黑石：今日降落时间，纯前端按「日期 + 星期」推算，不发请求 -->
+						<view class="hs-drop" v-if="activeGuide.key === 'hs'">
+							<view class="hs-drop-head">
+								<text class="hs-drop-title">今日降落时间</text>
+								<view
+									class="hs-drop-tag"
+									:class="hsDrop.type === '红石' ? 'hs-tag-red' : 'hs-tag-black'"
+									v-if="hsDrop.type"
+								>
+									<text class="hs-drop-tag-txt">{{ hsDrop.type }}</text>
+								</view>
+							</view>
+
+							<view class="hs-slots" v-if="hsDrop.slots.length">
+								<view class="hs-slot" v-for="(s, i) in hsDrop.slots" :key="s">
+									<text class="hs-slot-idx">第{{ i + 1 }}次</text>
+									<text class="hs-slot-time">{{ s }}</text>
+								</view>
+							</view>
+
+							<view class="hs-empty" v-else>
+								<text class="hs-empty-txt">今日无红石/黑石</text>
+							</view>
+						</view>
 					</view>
 
 					<text class="sheet-tip" v-if="activeGuide.status === 'ok'">点击图片可全屏查看</text>
@@ -491,6 +516,40 @@ export default {
 
 		guideCanRetry() {
 			return this.activeGuide.status === 'error';
+		},
+
+		/* 今日红石/黑石降落时间：完全本地推算，不请求任何接口
+		 * ① 先按「日期落在 1-15 还是 16-月底」+ 星期，决定今天落红石还是黑石
+		 *    1-15 号：周二黑石 / 周六红石 / 周日红石
+		 *    16-月底：周三黑石 / 周五红石 / 周日红石
+		 * ② 再按星期取固定的三档时间（每天 3 次，每次持续到下一个整点）
+		 * ③ 没有红石/黑石的日子返回空数组，弹层里显示「今日无红石/黑石」 */
+		hsDrop() {
+			const now = new Date();
+			const day = now.getDate();
+			const wd = now.getDay(); // 0 = 周日
+			let type = '';
+
+			if (day <= 15) {
+				if (wd === 2) type = '黑石';
+				else if (wd === 6 || wd === 0) type = '红石';
+			} else {
+				if (wd === 3) type = '黑石';
+				else if (wd === 5 || wd === 0) type = '红石';
+			}
+
+			const TABLE = {
+				0: ['07:08-08:00', '13:08-14:00', '19:08-20:00'],
+				1: ['07:08-08:00', '13:08-14:00', '19:08-20:00'],
+				2: ['09:08-10:00', '14:08-15:00', '19:08-20:00'],
+				3: ['09:08-10:00', '15:08-16:00', '21:08-22:00'],
+				4: ['10:08-11:00', '16:08-17:00', '22:08-23:00'],
+				5: ['11:08-12:00', '17:08-18:00', '23:08-24:00'],
+				6: ['10:08-11:00', '14:08-15:00', '22:08-23:00']
+			};
+
+			const slots = type ? TABLE[wd] || [] : [];
+			return { type, slots, line: slots.join(' / ') };
 		}
 		// #endif
 	},
@@ -2210,6 +2269,93 @@ export default {
 	text-align: center;
 	font-size: 20rpx;
 	color: var(--text-faint);
+}
+
+/* ---------- 红石/黑石：今日降落时间 ---------- */
+.hs-drop {
+	margin-top: 20rpx;
+	padding: 22rpx 24rpx;
+	border-radius: 26rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: rgba(255, 255, 255, 0.10);
+}
+
+.hs-drop-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12rpx;
+}
+
+.hs-drop-title {
+	font-size: 24rpx;
+	font-weight: 600;
+	letter-spacing: 2rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.hs-drop-tag {
+	padding: 6rpx 16rpx;
+	border-radius: 999rpx;
+}
+
+.hs-tag-red {
+	background-color: rgba(255, 96, 96, 0.22);
+}
+
+.hs-tag-black {
+	background-color: rgba(176, 188, 210, 0.22);
+}
+
+.hs-drop-tag-txt {
+	font-size: 20rpx;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.hs-slots {
+	display: flex;
+	flex-direction: column;
+}
+
+.hs-slot {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 11rpx 0;
+}
+
+.hs-slot-idx {
+	font-size: 22rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-faint);
+	transition: color 0.45s;
+}
+
+.hs-slot-time {
+	font-size: 27rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.hs-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10rpx 0 4rpx;
+}
+
+.hs-empty-txt {
+	font-size: 24rpx;
+	letter-spacing: 1rpx;
+	color: var(--text-faint);
+	transition: color 0.45s;
 }
 
 /* ---------- 娱乐悬浮球 ---------- */
