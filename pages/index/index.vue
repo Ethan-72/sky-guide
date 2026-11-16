@@ -683,64 +683,96 @@ export default {
    iOS 液态玻璃主题
    ========================================================== */
 .theme-dark {
-	--bg: #07090E;
-	--text: #F5F7FA;
-	--text-dim: rgba(245, 247, 250, 0.60);
-	--text-faint: rgba(245, 247, 250, 0.36);
-	--glass-a: rgba(255, 255, 255, 0.105);
-	--glass-b: rgba(255, 255, 255, 0.035);
-	--glass-bd: rgba(255, 255, 255, 0.16);
-	--line: rgba(255, 255, 255, 0.075);
+	--bg: #08090C;
+	--bg-grad: radial-gradient(120% 80% at 12% -10%, #171B2B 0%, rgba(8, 9, 12, 0) 55%),
+		radial-gradient(100% 70% at 92% 8%, #1A1630 0%, rgba(8, 9, 12, 0) 52%),
+		linear-gradient(180deg, #0A0B10 0%, #07080B 100%);
+	--text: #F2F4F8;
+	--text-dim: rgba(242, 244, 248, 0.62);
+	--text-faint: rgba(242, 244, 248, 0.38);
+
+	/* 玻璃：靠 backdrop-filter 折射背景，本体只留很淡的一层白 */
+	--glass-bg: rgba(255, 255, 255, 0.055);
+	--glass-bg-2: rgba(255, 255, 255, 0.02);
+	--glass-bd: rgba(255, 255, 255, 0.13);
+	--glass-hl: rgba(255, 255, 255, 0.30);   /* 上边缘高光 */
+	--glass-hl-btm: rgba(255, 255, 255, 0.05); /* 下边缘反光 */
+	--sheen: rgba(255, 255, 255, 0.11);       /* 左上柔光 */
+	--blur: 30px;
+
+	--line: rgba(255, 255, 255, 0.055);
 	--accent: #7FD6FF;
 	--accent-2: #B49BFF;
-	--blob-a: rgba(90, 120, 255, 0.55);
-	--blob-b: rgba(150, 90, 230, 0.42);
-	--blob-c: rgba(0, 190, 220, 0.30);
-	--shadow: 0 22rpx 54rpx rgba(0, 0, 0, 0.52);
+	--blob-a: rgba(96, 128, 255, 0.40);
+	--blob-b: rgba(156, 92, 232, 0.30);
+	--blob-c: rgba(0, 188, 214, 0.22);
+	--shadow: 0 10px 30px rgba(0, 0, 0, 0.30), 0 2px 8px rgba(0, 0, 0, 0.18);
 	--btn-a: #7FD6FF;
-	--btn-b: #B49BFF;
+	--btn-b: #A9A0FF;
 	--btn-txt: #06121B;
-	--seg-bg: rgba(255, 255, 255, 0.10);
-	--seg-thumb: rgba(255, 255, 255, 0.92);
+
+	--seg-bg: rgba(255, 255, 255, 0.07);
+	--seg-thumb: rgba(255, 255, 255, 0.16);
+	--seg-thumb-bd: rgba(255, 255, 255, 0.18);
+	--seg-txt-on: #F2F4F8;
 }
 
 .theme-light {
-	--bg: #EEF1F7;
-	--text: #0E1116;
-	--text-dim: rgba(14, 17, 22, 0.58);
-	--text-faint: rgba(14, 17, 22, 0.38);
-	--glass-a: rgba(255, 255, 255, 0.82);
-	--glass-b: rgba(255, 255, 255, 0.50);
-	--glass-bd: rgba(255, 255, 255, 0.95);
-	--line: rgba(14, 17, 22, 0.07);
+	--bg: #EDF1F7;
+	--bg-grad: radial-gradient(120% 80% at 10% -12%, #DCE6FA 0%, rgba(237, 241, 247, 0) 58%),
+		radial-gradient(100% 70% at 95% 6%, #EBE2FB 0%, rgba(237, 241, 247, 0) 55%),
+		linear-gradient(180deg, #F3F6FB 0%, #E8EDF6 100%);
+	--text: #0B0D12;
+	--text-dim: rgba(11, 13, 18, 0.58);
+	--text-faint: rgba(11, 13, 18, 0.38);
+
+	/* 浅色下玻璃必须比背景「更白一点点」，靠模糊 + 高光区分层次 */
+	--glass-bg: rgba(255, 255, 255, 0.58);
+	--glass-bg-2: rgba(255, 255, 255, 0.42);
+	--glass-bd: rgba(255, 255, 255, 0.85);
+	--glass-hl: rgba(255, 255, 255, 0.95);
+	--glass-hl-btm: rgba(255, 255, 255, 0.35);
+	--sheen: rgba(255, 255, 255, 0.45);
+	--blur: 26px;
+
+	--line: rgba(11, 13, 18, 0.055);
 	--accent: #0A84FF;
 	--accent-2: #7B5CFF;
-	--blob-a: rgba(120, 170, 255, 0.42);
-	--blob-b: rgba(180, 140, 255, 0.34);
-	--blob-c: rgba(110, 220, 220, 0.28);
-	--shadow: 0 20rpx 44rpx rgba(22, 34, 56, 0.12);
+	--blob-a: rgba(120, 170, 255, 0.34);
+	--blob-b: rgba(178, 140, 255, 0.26);
+	--blob-c: rgba(110, 214, 214, 0.22);
+	--shadow: 0 10px 26px rgba(22, 34, 56, 0.09), 0 2px 6px rgba(22, 34, 56, 0.05);
 	--btn-a: #0A84FF;
-	--btn-b: #7B5CFF;
+	--btn-b: #6E63FF;
 	--btn-txt: #FFFFFF;
-	--seg-bg: rgba(255, 255, 255, 0.62);
-	--seg-thumb: rgba(255, 255, 255, 1);
+
+	--seg-bg: rgba(255, 255, 255, 0.55);
+	--seg-thumb: rgba(255, 255, 255, 0.95);
+	--seg-thumb-bd: rgba(255, 255, 255, 0.98);
+	--seg-txt-on: #0B0D12;
 }
 
 .page {
 	position: relative;
 	min-height: 100vh;
 	background-color: var(--bg);
+	background-image: var(--bg-grad);
+	background-size: cover;
 	color: var(--text);
 	overflow: hidden;
 	transition: background-color 0.45s ease, color 0.45s ease;
 }
 
 /* ---------- 背景光斑（玻璃折射的来源） ---------- */
+/* 液态玻璃能「看起来像玻璃」，前提是背后有东西可以被模糊。
+   这里的光斑必须够大、够糊、够淡，否则会被糊成一团团色块。 */
 .blob {
 	position: fixed;
 	border-radius: 50%;
 	pointer-events: none;
 	z-index: 0;
+	filter: blur(70px);
+	opacity: 0.9;
 }
 
 .blob-1 {
@@ -777,25 +809,36 @@ export default {
 }
 
 /* ---------- 玻璃基类 ---------- */
+/* 真·液态玻璃的四层结构：
+   ① backdrop-filter 把背后光斑模糊+提饱和（这是「玻璃」的本体，之前完全没写）
+   ② 一层极淡的白色填充（0.05~0.6，深色更淡、浅色更白）
+   ③ 上下各一条 0.5px 内高光，制造边缘厚度
+   ④ 柔和的大范围投影，让卡片离开背景 */
 .glass {
 	position: relative;
 	overflow: hidden;
-	border-radius: 40rpx;
+	border-radius: 44rpx;
 	border: 1rpx solid var(--glass-bd);
-	background-image: linear-gradient(158deg, var(--glass-a) 0%, var(--glass-b) 100%);
-	box-shadow: var(--shadow), inset 0 1rpx 0 rgba(255, 255, 255, 0.26);
-	transition: background-image 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
+	background-color: var(--glass-bg);
+	background-image: linear-gradient(168deg, var(--glass-bg-2) 0%, rgba(255, 255, 255, 0) 48%);
+	-webkit-backdrop-filter: blur(28px) saturate(180%);
+	backdrop-filter: blur(28px) saturate(180%);
+	box-shadow: var(--shadow),
+		inset 0 1rpx 0 var(--glass-hl),
+		inset 0 -1rpx 0 var(--glass-hl-btm);
+	transition: background-color 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
 }
 
-/* 顶部斜向高光：模拟玻璃边缘折射 */
+/* 左上角柔光：模拟光源打过来的镜面反射，面积小、透明度低，不压内容 */
 .glass::before {
 	content: '';
 	position: absolute;
 	top: 0;
 	left: 0;
 	right: 0;
-	height: 46%;
-	background-image: linear-gradient(176deg, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0) 100%);
+	height: 60%;
+	border-radius: inherit;
+	background-image: radial-gradient(115% 90% at 16% -10%, var(--sheen) 0%, rgba(255, 255, 255, 0) 62%);
 	pointer-events: none;
 }
 
@@ -847,6 +890,9 @@ export default {
 	border-radius: 999rpx;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
+	-webkit-backdrop-filter: blur(18px) saturate(180%);
+	backdrop-filter: blur(18px) saturate(180%);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm), 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .seg-thumb {
@@ -857,7 +903,8 @@ export default {
 	height: 48rpx;
 	border-radius: 999rpx;
 	background-color: var(--seg-thumb);
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.18);
+	border: 1rpx solid var(--seg-thumb-bd);
+	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
 	transition: transform 0.36s cubic-bezier(0.32, 1.3, 0.5, 1);
 }
 
@@ -880,7 +927,7 @@ export default {
 }
 
 .seg-txt-on {
-	color: #0E1116;
+	color: var(--seg-txt-on);
 	font-weight: 600;
 }
 
@@ -893,6 +940,9 @@ export default {
 	border-radius: 999rpx;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
+	-webkit-backdrop-filter: blur(18px) saturate(180%);
+	backdrop-filter: blur(18px) saturate(180%);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
 }
 
 .daytab {
@@ -902,12 +952,15 @@ export default {
 	justify-content: center;
 	height: 62rpx;
 	border-radius: 999rpx;
-	transition: background-color 0.3s ease;
+	/* 预占边框，避免选中时出现 1px 抖动 */
+	border: 1rpx solid transparent;
+	transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .daytab-on {
 	background-color: var(--seg-thumb);
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.18);
+	border: 1rpx solid var(--seg-thumb-bd);
+	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
 }
 
 .daytab-txt {
@@ -918,7 +971,7 @@ export default {
 }
 
 .daytab-txt-on {
-	color: #0E1116;
+	color: var(--seg-txt-on);
 	font-weight: 600;
 }
 
@@ -964,16 +1017,27 @@ export default {
 }
 
 /* ---------- 任务列表 ---------- */
+/* 分隔线改成「内缩」的细线：从序号右侧开始，不顶到卡片边缘，
+   这是 iOS 列表的标准做法，也让玻璃边缘保持完整。 */
 .task {
 	position: relative;
 	display: flex;
 	align-items: flex-start;
-	padding: 32rpx 30rpx;
-	border-bottom: 1rpx solid var(--line);
+	padding: 30rpx 28rpx;
 }
 
-.task:last-child {
-	border-bottom: none;
+.task::after {
+	content: '';
+	position: absolute;
+	left: 92rpx;
+	right: 28rpx;
+	bottom: 0;
+	height: 1rpx;
+	background-color: var(--line);
+}
+
+.task:last-child::after {
+	display: none;
 }
 
 .badge {
@@ -986,7 +1050,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	background-image: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-	box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.26);
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
 }
 
 .badge-txt {
@@ -1066,7 +1130,9 @@ export default {
 	padding: 0 30rpx;
 	border-radius: 999rpx;
 	border: 1rpx solid var(--glass-bd);
-	background-color: rgba(255, 255, 255, 0.10);
+	background-color: var(--seg-bg);
+	-webkit-backdrop-filter: blur(16px) saturate(180%);
+	backdrop-filter: blur(16px) saturate(180%);
 }
 
 .retry-txt {
@@ -1082,11 +1148,13 @@ export default {
 	justify-content: center;
 	width: 100%;
 	height: 100rpx;
-	margin-top: 48rpx;
+	margin-top: 46rpx;
 	overflow: hidden;
 	border-radius: 999rpx;
-	background-image: linear-gradient(135deg, var(--btn-a) 0%, var(--btn-b) 100%);
-	box-shadow: 0 16rpx 36rpx rgba(0, 0, 0, 0.28), inset 0 1rpx 0 rgba(255, 255, 255, 0.55);
+	background-image: linear-gradient(180deg, var(--btn-a) 0%, var(--btn-b) 100%);
+	box-shadow: 0 8px 22px rgba(10, 60, 140, 0.18),
+		inset 0 1rpx 0 rgba(255, 255, 255, 0.50),
+		inset 0 -1rpx 0 rgba(0, 0, 0, 0.08);
 	transition: transform 0.18s ease, opacity 0.18s ease;
 }
 
@@ -1096,8 +1164,8 @@ export default {
 	top: 0;
 	left: 0;
 	right: 0;
-	height: 50%;
-	background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 100%);
+	height: 52%;
+	background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 100%);
 	pointer-events: none;
 }
 

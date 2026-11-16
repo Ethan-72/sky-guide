@@ -17,6 +17,12 @@ export default defineConfig({
 	//  · GitHub Pages 项目页 → '/sky-guide/'（由 H5_BASE 环境变量注入）
 	base: process.env.H5_BASE || '/',
 	plugins: [uni()],
+	build: {
+		// 关键：默认 cssTarget 是 esnext，esbuild 会认为 -webkit-backdrop-filter 多余而删掉，
+		// 导致 iOS 16 及更早的 Safari 完全没有毛玻璃效果（液态玻璃的灵魂就没了）。
+		// 显式声明目标浏览器，让前缀保留下来。
+		cssTarget: ['safari13', 'ios13', 'chrome87', 'edge88', 'firefox78']
+	},
 	server: {
 		host: '127.0.0.1',
 		port: 5180,
