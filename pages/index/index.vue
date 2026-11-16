@@ -100,6 +100,12 @@
  *   注意：该接口 Content-Type 为 image/png，直接返回图片二进制流，
  *   不返回 JSON。所以「真实图片地址」就是这条接口 URL 本身，
  *   直接赋给 posterUrl 交给 <image> 加载即可。
+ * 接口三（明日任务）：https://api.qmkjcm.cn/api/gy_mr_rw/
+ *   关键点：这条接口一次返回「今天 + 明天」两组任务，是「明天」页签的
+ *   唯一真实数据来源。上面两条只返回今天，试过 date/day/t/type/offset
+ *   等参数全部无效，服务端不支持按日期查询。
+ *   返回结构：{ code:200, data:{ task_list:[ {date:'YYYY-MM-DD', quest_cn:'文案'} ] } }
+ *   该接口带 Access-Control-Allow-Origin: *，纯静态托管也能直接请求。
  * ------------------------------------------------------------------
  */
 const CACHE_KEY = 'sky_guide_theme'; // 手动选择的主题：dark / light
@@ -107,6 +113,8 @@ const MODE_KEY = 'sky_guide_theme_mode'; // auto=按时间自动 / manual=用户
 // 按日期存档：{ 'YYYY-MM-DD': { tasks: [{text, from}], at: 'HH:mm' } }
 // 接口只返回「今天」，所以昨天只能靠本地存档回看
 const ARCHIVE_KEY = 'sky_guide_archive';
+// 明天任务接口：一次返回今天+明天两组，静态托管也能直连（CORS: *）
+const MR_API = 'https://api.qmkjcm.cn/api/gy_mr_rw/';
 // 自动模式的时间分界：6:00-17:59 白色主题，18:00-5:59 黑色主题
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 18;
@@ -136,6 +144,9 @@ export default {
 			scrwUrl: API_BASE + '/sky/sc/scrw',
 			scrwKey: 'BGqiyBXO4v8CS4JdoH7oUCcoWh',
 
+			// 明天任务接口（固定绝对地址，不参与 /api 代理）
+			mrUrl: MR_API,
+
 			// -------- 页面数据 --------
 			loading: false,
 			tasks: [],
@@ -149,6 +160,9 @@ export default {
 			// -------- 日期切换 --------
 			dayOffset: 0, // -1 昨天 / 0 今天 / 1 明天
 			archivedTasks: [], // 非今天时展示的历史存档任务
+			tomorrowTasks: [], // 接口返回的明日任务（真实数据）
+			tomorrowLoading: false,
+			tomorrowFetchedDay: '', // 上次拉取明日任务时「今天」的日期，用于跨天重取
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -183,11 +197,15 @@ export default {
 		},
 
 		displayTasks() {
-			return this.isToday ? this.tasks : this.archivedTasks;
+			if (this.dayOffset === 1) return this.tomorrowTasks;
+			if (this.dayOffset === -1) return this.archivedTasks;
+			return this.tasks;
 		},
 
 		emptyText() {
-			if (this.dayOffset === 1) return '明天的任务还没公布，明天 0 点后自动更新';
+			if (this.dayOffset === 1) {
+				return this.tomorrowLoading ? '正在获取明天的任务…' : '暂时没拿到明天的任务，点上方「明天」可重试';
+			}
 			if (this.dayOffset === -1) return '这一天没有本地存档（应用每天首次打开时会自动存档）';
 			return '暂无数据';
 		}
@@ -209,13 +227,14 @@ export default {
 		// 先用 Mock 渲染，保证首屏立刻可见
 		this.applyMock();
 
-		// useMock 为 false 时发起两个独立请求：文字任务 + 攻略图片
+		// useMock 为 false 时发起三个独立请求：文字任务 + 攻略图片 + 明日任务
 		if (!this.useMock) {
 			// 先记下时间，避免 onLoad 之后紧跟的 onShow 又触发一次重复请求
 			this.lastFetchAt = Date.now();
 			this.lastFetchDay = this.todayText();
 			this.fetchTasks();
 			this.fetchPoster();
+			this.fetchTomorrow(); // 顺带把明天也拿到，点「明天」不用等
 		}
 	},
 
@@ -231,9 +250,14 @@ export default {
 
 		// 数据新鲜度检查：从后台切回来时，只要「跨天」或「超过 5 分钟没更新」就静默重拉。
 		// 否则手机挂后台一整夜，早上打开看到的还是昨天的任务。
-		if (!this.isToday) return; // 正在看昨天/明天时不打扰
-		if (this.useMock || this.loading) return;
+		if (this.useMock) return;
 		const dayChanged = this.todayText() !== this.lastFetchDay;
+		// 明日任务跟着日期走：一旦跨天，旧的那份就过期了
+		if (dayChanged) {
+			this.tomorrowTasks = [];
+			this.fetchTomorrow();
+		}
+		if (!this.isToday || this.loading) return; // 正在看昨天/明天时不重复打扰
 		const tooOld = Date.now() - this.lastFetchAt > 5 * 60 * 1000;
 		if (dayChanged || tooOld) {
 			this.fetchTasks(false, true);
@@ -243,8 +267,13 @@ export default {
 
 	// 下拉刷新（需在 pages.json 中开启 enablePullDownRefresh）
 	onPullDownRefresh() {
-		// 看昨天/明天时只重新读本地存档，不请求接口
-		if (!this.isToday) {
+		// 看明天时重新拉明日任务；看昨天时只重读本地存档
+		if (this.dayOffset === 1) {
+			this.fetchTomorrow();
+			uni.stopPullDownRefresh();
+			return;
+		}
+		if (this.dayOffset === -1) {
 			this.loadArchive();
 			uni.stopPullDownRefresh();
 			return;
@@ -283,7 +312,13 @@ export default {
 
 		switchDay(offset) {
 			this.dayOffset = offset;
-			if (offset !== 0) this.loadArchive();
+			if (offset === -1) this.loadArchive();
+			if (offset === 1) {
+				// 没拿到过、或已经跨天，就重新拉一次明日任务
+				if (!this.tomorrowTasks.length || this.tomorrowFetchedDay !== this.todayText()) {
+					this.fetchTomorrow();
+				}
+			}
 		},
 
 		/* 读取某一天的历史存档（没有就展示空态提示） */
@@ -305,15 +340,20 @@ export default {
 
 		/* 每次成功拿到今日任务就存一份档，供以后回看 */
 		saveArchive() {
-			if (!this.tasks.length) return;
+			if (this.tasks.length) this.saveArchiveFor(this.todayText(), this.tasks);
+		},
+
+		/* 把某一天的任务写入本地存档（保留最近 30 天） */
+		saveArchiveFor(date, list) {
+			if (!date || !list || !list.length) return;
 			let archive = {};
 			try {
 				archive = uni.getStorageSync(ARCHIVE_KEY) || {};
 			} catch (e) {
 				archive = {};
 			}
-			archive[this.todayText()] = {
-				tasks: this.tasks.map(t => ({ text: t.text, from: t.from || '' })),
+			archive[date] = {
+				tasks: list.map(t => ({ text: t.text, from: t.from || '' })),
 				at: this.nowText()
 			};
 			// 只保留最近 30 天，避免本地存储无限增长
@@ -324,6 +364,58 @@ export default {
 			} catch (e) {
 				// 存储写满时忽略，不影响主流程
 			}
+		},
+
+		/* ---------------- 明日任务（真实数据） ----------------
+		 * 这条接口一次返回「今天 + 明天」两组，所以：
+		 *   · 抽出 date === 明天的写进 tomorrowTasks 供「明天」页签展示
+		 *   · 顺手把今天那组也存档，等于多一条真实来源的备份
+		 */
+		fetchTomorrow() {
+			if (this.useMock) return;
+			const tomorrow = this.dayText(1);
+			const today = this.todayText();
+			this.tomorrowLoading = true;
+
+			uni.request({
+				url: this.mrUrl,
+				method: 'GET',
+				timeout: 12000,
+				success: res => {
+					let body = res && res.data;
+					if (typeof body === 'string') {
+						try {
+							body = JSON.parse(body);
+						} catch (e) {
+							body = null;
+						}
+					}
+					const list = body && body.data && body.data.task_list;
+					this.tomorrowLoading = false;
+					if (!Array.isArray(list) || !list.length) return;
+
+					// 按日期分组
+					const grouped = {};
+					list.forEach(item => {
+						if (!item || !item.date || !item.quest_cn) return;
+						(grouped[item.date] = grouped[item.date] || []).push({ text: item.quest_cn, from: '' });
+					});
+
+					const tmr = grouped[tomorrow] || [];
+					if (tmr.length) {
+						this.tomorrowTasks = tmr.map((t, i) => ({ id: i + 1, text: t.text, from: '' }));
+						this.saveArchiveFor(tomorrow, tmr);
+					}
+					this.tomorrowFetchedDay = today;
+					// 今天那一组也存一份（真实来源，接口挂掉时还有得看）
+					if (grouped[today] && grouped[today].length) {
+						this.saveArchiveFor(today, grouped[today]);
+					}
+				},
+				fail: () => {
+					this.tomorrowLoading = false;
+				}
+			});
 		},
 
 		/* ---------------- 主题切换 ---------------- */
