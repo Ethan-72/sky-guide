@@ -1141,7 +1141,7 @@ export default {
 						this.saveArchive();
 						// 攻略图片由独立的 scrw 接口获取，这里不处理
 					} else {
-						uni.showToast({ title: '数据格式异常，已回退 Mock', icon: 'none' });
+						uni.showToast({ title: this.apiErrMsg(body) + '，已回退 Mock', icon: 'none' });
 						this.applyMock();
 					}
 				},
@@ -1154,6 +1154,16 @@ export default {
 					if (isPullDown) uni.stopPullDownRefresh();
 				}
 			});
+		},
+
+		/* 根据接口返回的 code / msg 生成更准确的错误提示，
+		 * 避免把「密钥失效」「请求过频」都笼统报成「数据格式异常」 */
+		apiErrMsg(body) {
+			const code = body && body.code;
+			const msg = String((body && body.msg) || '');
+			if (code === 403 || /密钥|key/i.test(msg)) return '接口密钥失效，需更新 key';
+			if (code === 429 || /频率|频繁/.test(msg)) return '请求太频繁，请稍后再试';
+			return '数据格式异常';
 		},
 
 		/* 清理任务文本：#r / #n 等格式控制符（接口的换行、颜色标记）和裸换行都会
