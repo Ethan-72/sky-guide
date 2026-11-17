@@ -12,13 +12,19 @@
 			<view class="topbar">
 				<view class="brand">
 					<view class="brand-dot"></view>
-					<text class="brand-text">每日云海</text>
+					<text class="brand-text">冰块</text>
 				</view>
 
-				<view class="seg" @click="toggleTheme" @longpress="resetThemeAuto">
-					<view class="liq-thumb seg-thumb" :style="segThumbStyle"></view>
-					<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'light' }">日</text></view>
-					<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'dark' }">夜</text></view>
+				<view class="topbar-right">
+					<view class="seg" @click="toggleTheme" @longpress="resetThemeAuto">
+						<view class="liq-thumb seg-thumb" :style="segThumbStyle"></view>
+						<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'light' }">日</text></view>
+						<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'dark' }">夜</text></view>
+					</view>
+
+					<view class="refresh-btn" @click="reloadPage">
+						<text class="refresh-icon" :class="{ 'refresh-spin': reloading }">&#8635;</text>
+					</view>
 				</view>
 			</view>
 
@@ -318,63 +324,26 @@
 </template>
 
 <script>
-/**
- * 每日云海 · 禁术暗黑主题
- * ------------------------------------------------------------------
- * 接口一（文字任务）：https://api.t1qq.com/api/sky/gyrw?key=xxx
- *   返回结构：{ code, msg, rw: [ { text: '任务文案' }, ... ] }
- * 接口二（攻略图片）：https://api.t1qq.com/api/sky/sc/scrw?key=xxx
- *   注意：该接口 Content-Type 为 image/png，直接返回图片二进制流，
- *   不返回 JSON。所以「真实图片地址」就是这条接口 URL 本身，
- *   直接赋给 posterUrl 交给 <image> 加载即可。
- * 接口三（明日任务）：https://api.qmkjcm.cn/api/gy_mr_rw/
- *   关键点：这条接口一次返回「今天 + 明天」两组任务，是「明天」页签的
- *   唯一真实数据来源。上面两条只返回今天，试过 date/day/t/type/offset
- *   等参数全部无效，服务端不支持按日期查询。
- *   返回结构：{ code:200, data:{ task_list:[ {date:'YYYY-MM-DD', quest_cn:'文案'} ] } }
- *   该接口带 Access-Control-Allow-Origin: *，纯静态托管也能直接请求。
- * ------------------------------------------------------------------
- */
-const CACHE_KEY = 'sky_guide_theme'; // 手动选择的主题：dark / light
-const MODE_KEY = 'sky_guide_theme_mode'; // auto=按时间自动 / manual=用户手动选过
-// 按日期存档：{ 'YYYY-MM-DD': { tasks: [{text, from}], at: 'HH:mm' } }
-// 接口只返回「今天」，所以昨天只能靠本地存档回看
-const ARCHIVE_KEY = 'sky_guide_archive';
-// 明天任务接口：一次返回今天+明天两组，静态托管也能直连（CORS: *）
-const MR_API = 'https://api.qmkjcm.cn/api/gy_mr_rw/';
-// 自动模式的时间分界：6:00-17:59 白色主题，18:00-5:59 黑色主题
+// 接口：
+//  · /sky/gyrw          文字任务 → { code, msg, rw:[{text}] }
+//  · /sky/sc/scrw       攻略图，返回 image/png 二进制流，URL 本身即图片地址
+//  · api.qmkjcm.cn      明日任务 → { data:{ task_list:[{date, quest_cn}] } }，一次返回今天+明天
+const CACHE_KEY = 'sky_guide_theme';
+const MODE_KEY = 'sky_guide_theme_mode';
+const ARCHIVE_KEY = 'sky_guide_archive'; // 接口只给今天，昨天回看靠本地存档
+const MR_API = 'https://api.qmkjcm.cn/api/gy_mr_rw/'; // CORS: *
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 18;
 
-
-// 接口基地址：
-//  · 有反向代理的环境（Vercel 的 rewrites / 本地 vite proxy）→ 相对路径 /api
-//  · 纯静态托管（GitHub Pages 没有代理）→ 构建时注入绝对地址 https://api.t1qq.com/api
+// 有代理时走 /api，纯静态托管构建时注入绝对地址
 const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
 
-/**
- * 更多攻略（季蜡 / 红石天气 / 复刻先祖 / 免费魔法）
- * ------------------------------------------------------------------
- * 四个功能全部复用 t1qq 现有的 key，实测均可直接取：
- *  · jl（季蜡位置）  img: /sky/sc/scjl   → JPEG 1200x750 位置图
- *                    text:/sky/sc/lzwz   → { jlwz:{text:'雨林1'}, dlwz:{text:'霞谷1'} }
- *  · hs（红石天气）  json:/sky/gytq      → { data:[jpg, gif] } 第一张是天气表，gif 是贴纸（需过滤）
- *  · fk（复刻先祖）  img: /sky/sc/scfk   → JPEG 2340x1080；休赛期返回「已结束」白底占位图，
- *                    接口无状态字段，只能靠图片特征（近白且无色）判定，见 detectEndedPoster()
- *  · mf（免费魔法）  img: /sky/mf/magic  → JPEG 900x600 魔法图
- *                    text:/sky/mf/mf     → { mf:'今日免费魔法', magic:[{text:'烟花魔法'}] }
- */
 const GUIDE_API = {
 	jl: { img: API_BASE + '/sky/sc/scjl', text: API_BASE + '/sky/sc/lzwz' },
 	hs: { json: API_BASE + '/sky/gytq' },
 	fk: { img: API_BASE + '/sky/sc/scfk' },
 	mf: { img: API_BASE + '/sky/mf/magic', text: API_BASE + '/sky/mf/mf' }
 };
-
-/**
- * 页面里除了任务/攻略接口，其余娱乐功能（敲木鱼 / 抽签 / 答案之书）
- * 全部使用本地写死的数组，不发任何请求，断网也能玩。
- */
 
 export default {
 	data() {
@@ -430,6 +399,8 @@ export default {
 			segIdx: 1, // 日=0 / 夜=1
 			segStretch: 0,
 			segLead: '0%',
+
+			reloading: false,
 
 			// -------- 一键生成分享图（Canvas 离屏绘制） --------
 			sharing: false, // 正在生成中，防重复点击
@@ -653,12 +624,7 @@ export default {
 			return this.activeGuide.status === 'error';
 		},
 
-		/* 今日红石/黑石降落时间：完全本地推算，不请求任何接口
-		 * ① 先按「日期落在 1-15 还是 16-月底」+ 星期，决定今天落红石还是黑石
-		 *    1-15 号：周二黑石 / 周六红石 / 周日红石
-		 *    16-月底：周三黑石 / 周五红石 / 周日红石
-		 * ② 再按星期取固定的三档时间（每天 3 次，每次持续到下一个整点）
-		 * ③ 没有红石/黑石的日子返回空数组，弹层里显示「今日无红石/黑石」 */
+		// 红石/黑石降落时间，本地推算：1-15 号周二黑石、周六周日红石；16 号起周三黑石、周五周日红石。没有的日子返回空数组。
 		hsDrop() {
 			const now = new Date();
 			const day = now.getDate();
@@ -831,7 +797,7 @@ export default {
 			return {
 				'--idx': String(idx),
 				'--sx': String(1 + stretch),
-				// 横向拉伸时纵向收一点，视觉上体积守恒，才像液体而不是橡皮筋
+				// 横向拉伸时纵向收一点，保持体积感
 				'--sy': String(1 - stretch * 0.42),
 				'--lead': lead
 			};
@@ -845,8 +811,7 @@ export default {
 			};
 		},
 
-		/* 阻尼弹簧：刚度 420 / 阻尼 27 ≈ 0.66 阻尼比，约 380ms 到位并轻微回弹 */
-		/* 与 CSS transition 的区别在于它是物理积分，速度可以被读出来驱动拉伸 */
+		// 弹簧动画：物理积分，速度可用于驱动滑块拉伸
 		slideTo(kind, target) {
 			const st = this._spring && this._spring[kind];
 			if (!st) return;
@@ -974,11 +939,7 @@ export default {
 			}
 		},
 
-		/* ---------------- 明日任务（真实数据） ----------------
-		 * 这条接口一次返回「今天 + 明天」两组，所以：
-		 *   · 抽出 date === 明天的写进 tomorrowTasks 供「明天」页签展示
-		 *   · 顺手把今天那组也存档，等于多一条真实来源的备份
-		 */
+		// 明日任务：接口一次返回今天+明天，抽出明天的存起来，今天的顺手存档备份
 		fetchTomorrow() {
 			if (this.useMock) return;
 			const tomorrow = this.dayText(1);
@@ -1099,6 +1060,20 @@ export default {
 			}
 		},
 
+		/* ---------------- 整页刷新 ---------------- */
+		reloadPage() {
+			if (this.reloading) return;
+			this.reloading = true;
+			// #ifdef H5
+			if (typeof window !== 'undefined' && window.location) {
+				window.location.reload();
+			}
+			// #endif
+			// #ifndef H5
+			uni.reLaunch({ url: '/pages/index/index' });
+			// #endif
+		},
+
 		/* ---------------- 下拉刷新 ---------------- */
 		refresh() {
 			if (this.useMock) {
@@ -1182,8 +1157,7 @@ export default {
 			return '数据格式异常';
 		},
 
-		/* 清理任务文本：#r / #n 等格式控制符（接口的换行、颜色标记）和裸换行都会
-		 * 原样显示成「收集30点烛火#r」这种尾巴，这里统一抹掉 */
+		// 清理任务文本里的 #r 等控制符和多余空白
 		cleanTaskText(text) {
 			return String(text || '')
 				.replace(/#[a-zA-Z]/g, '')
@@ -1192,11 +1166,7 @@ export default {
 				.trim();
 		},
 
-		/* ---------------- 季蜡位置（标题下方一行小字） ----------------
-		 * /sky/sc/lzwz → { jlwz:{ text:'雨林1' } }，格式化成「雨林（图1）」
-		 * 文档里该接口只有 key 一个参数、没有明日数据，
-		 * 所以只取今天；切到明天时 jlTomorrow 为空，标题下自动不显示，不报错。
-		 */
+		// 季蜡位置：/sky/sc/lzwz → { jlwz:{text} }，格式化成「雨林（图1）」；接口无明日数据
 		fetchJinLa() {
 			uni.request({
 				url: API_BASE + '/sky/sc/lzwz',
@@ -1221,13 +1191,7 @@ export default {
 			return raw;
 		},
 
-		/* ---------------- 攻略图片接口（独立请求） ----------------
-		 * scrw 返回的是 image/png 二进制流，不是 JSON，
-		 * 所以「真实图片地址」就是这条接口 URL 本身。
-		 * 这里单独发一次请求探测响应头：
-		 *   · Content-Type 含 image → 直接把该 URL 赋给 posterUrl
-		 *   · 若接口将来改成返回 JSON → 从 img / pic / url / data 里提取真实地址
-		 */
+		// 攻略图：scrw 返回 image/png 流，URL 本身即图片地址；探测响应头，兼容将来改返回 JSON
 		fetchPoster(isPullDown, silent) {
 			const url = this.scrwUrl + '?key=' + this.scrwKey;
 			// 静默刷新时不显示「长图加载中…」，避免切回前台闪一下占位文案
@@ -1354,11 +1318,7 @@ export default {
 			});
 		},
 
-		/* ---------------- 一键生成分享图（Canvas 离屏绘制） ----------------
-		 * 流程：点按钮 → 量文字算行数/总高 → 设画布高度 → 绘制 → 导出临时图 → 复用 previewImage 预览
-		 * · 画布必须用定位移出屏幕，display:none 在 H5 端画不出内容
-		 * · 统一深色夜空风 + 光斑，不跟随日夜主题，分享出去更好看
-		 * · 底部水印「@冰块」，长按预览图即可保存 */
+		// 分享图：离屏 Canvas 绘制后转临时图预览；画布移出屏幕（display:none 画不出），固定夜空风，带水印
 		makeSharePoster() {
 			if (this.sharing) return;
 			const list = this.displayTasks;
@@ -1530,11 +1490,7 @@ export default {
 			});
 		},
 
-		/* ---------------- 实时时钟 + 距刷新倒计时 ----------------
-		 * 不用「setInterval 每秒 +1」的累加写法：那种写法在手机切后台时会被
-		 * 系统暂停，回来就会慢一大截。这里每一拍都重新 new Date() 取系统时间，
-		 * 再用 rAF 驱动（rAF 在后台自动暂停、回前台立刻恢复，第一帧就是准确时间）。
-		 * 同时监听 visibilitychange / onShow 强制补一拍，切回来零延迟对齐。 */
+		// 实时时钟：每拍取系统时间，rAF 驱动，切后台暂停、回前台自动对齐
 		startClock() {
 			this.stopClock();
 			this.tickClock(true);
@@ -1587,10 +1543,10 @@ export default {
 			this.clockMer = h24 < 12 ? '上午' : '下午';
 			this.clockTime = p2(h12) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
 
-			// 背景时段跟时钟同一拍：跨时段时页面背景自动渐变切换
+			// 背景时段随时钟切换
 			this.refreshPhase(h24);
 
-			// 倒计时跟时钟同一拍走，保证两个数字永远同步
+			// 倒计时与时钟同步更新
 			this.tickRefresh();
 		},
 
@@ -1650,9 +1606,7 @@ export default {
 			this.buzz();
 		},
 
-		/* 音频解锁：移动端浏览器禁止手势前出声，所以第一次点/摸页面时就把
-		 * AudioContext 建好并 resume()，之后敲木鱼第一下就能响。
-		 * 不支持或抛异常就静默降级——没有声音也绝不影响计数和动画。 */
+		// 首次触摸时建好 AudioContext（浏览器要求手势后才能出声），失败就静音
 		ensureAudio() {
 			try {
 				if (typeof window === 'undefined') return;
@@ -1665,8 +1619,7 @@ export default {
 			}
 		},
 
-		/* 用 WebAudio 现场合成一记「咚」：低频正弦快速下滑 + 一小段木头脆响噪声。
-		 * 不需要任何音频文件；浏览器要求用户手势后才能出声，这里正好在点击里调用。 */
+		// 现场合成一记「咚」：低频正弦下滑 + 木头脆响噪声，不需要音频文件
 		knock() {
 			try {
 				this.ensureAudio();
@@ -1709,7 +1662,7 @@ export default {
 				ng.connect(ac.destination);
 				src.start(t);
 			} catch (e) {
-				// 浏览器不支持 / 被自动播放策略拦下：静音即可，绝不影响计数
+				// 不支持或被拦截时静音，不影响计数
 			}
 		},
 
@@ -2009,9 +1962,7 @@ export default {
 			uni.previewImage({ urls: [g.url], current: g.url });
 		},
 
-		/* 判定「已结束」占位图：白底黑字、几乎没有彩色。
-		 * 采样 24×24，平均亮度 > 205 且平均饱和差 < 12 判为占位图。
-		 * 拿不到像素（canvas 被污染 / 非浏览器环境）时一律当正常图，宁可多显示也不误伤。 */
+		// 判定休赛期占位图：采样 24×24，过亮且无彩色即视为已结束；取不到像素时当正常图
 		detectEndedPoster(url) {
 			return new Promise(resolve => {
 				if (typeof document === 'undefined' || typeof Image === 'undefined') {
@@ -2083,8 +2034,7 @@ export default {
 			if (g && g.status !== 'closed') g.desc = desc;
 		},
 
-		/* 复刻先祖提前判定一次：休赛期直接在卡片上标「本期已结束」并禁用点击，
-		 * 不让用户点进去才发现是白底占位图。判定失败（false）就维持原状。 */
+		// 提前判定复刻先祖是否休赛期，是则卡片标「本期已结束」并禁用点击
 		precheckEndedGuide() {
 			const g = this.guides.find(x => x.key === 'fk');
 			if (!g) return;
@@ -2296,8 +2246,6 @@ export default {
 }
 
 /* ---------- 背景光斑（玻璃折射的来源） ---------- */
-/* 液态玻璃能「看起来像玻璃」，前提是背后有东西可以被模糊。
-   这里的光斑必须够大、够糊、够淡，否则会被糊成一团团色块。 */
 .blob {
 	position: fixed;
 	border-radius: 50%;
@@ -2338,14 +2286,16 @@ export default {
 	padding-right: 32rpx;
 	padding-top: calc(var(--status-bar-height, 20px) + 16rpx);
 	padding-bottom: calc(56rpx + env(safe-area-inset-bottom));
+	animation: content-fade-in 0.4s ease both;
+}
+
+@keyframes content-fade-in {
+	from { opacity: 0; transform: translateY(8rpx); }
+	to { opacity: 1; transform: translateY(0); }
 }
 
 /* ---------- 玻璃基类 ---------- */
-/* 真·液态玻璃的四层结构：
-   ① backdrop-filter 把背后光斑模糊+提饱和（这是「玻璃」的本体，之前完全没写）
-   ② 一层极淡的白色填充（0.05~0.6，深色更淡、浅色更白）
-   ③ 上下各一条 0.5px 内高光，制造边缘厚度
-   ④ 柔和的大范围投影，让卡片离开背景 */
+/* 毛玻璃模糊 + 淡填充 + 内高光 + 投影 */
 .glass {
 	position: relative;
 	overflow: hidden;
@@ -2362,8 +2312,7 @@ export default {
 	transition: background-color 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
 }
 
-/* 左上角柔光：模拟光源打过来的镜面反射，面积小、透明度低，不压内容
-   iOS 27：再加一条左上斜向的窄高光条，模拟玻璃曲面的「聚光棱线」 */
+/* 左上角柔光 + 斜向高光条 */
 .glass::before {
 	content: '';
 	position: absolute;
@@ -2390,6 +2339,12 @@ export default {
 	/* 小程序右上角是微信胶囊按钮，顶栏右侧必须让出安全区，避免日夜切换被遮挡 */
 	padding-right: 220rpx;
 	/* #endif */
+}
+
+.topbar-right {
+	display: flex;
+	align-items: center;
+	margin-left: auto;
 }
 
 .brand {
@@ -2437,7 +2392,7 @@ export default {
 	will-change: transform;
 }
 
-/* 滑块里那点会流动的高光：跟着速度左右跑，像液体被推着走时的反光 */
+/* 滑块高光：跟着速度左右流动 */
 .liq-thumb::after {
 	content: '';
 	position: absolute;
@@ -2451,11 +2406,49 @@ export default {
 }
 
 /* 日夜分段控件 */
+/* 刷新按钮：与日夜切换同款液态玻璃圆钮 */
+.refresh-btn {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 60rpx;
+	height: 60rpx;
+	margin-left: 16rpx;
+	border-radius: 999rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: var(--seg-bg);
+	-webkit-backdrop-filter: blur(20px) saturate(200%);
+	backdrop-filter: blur(20px) saturate(200%);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm), inset 0 0 0 1rpx var(--glass-rim), 0 2px 10px rgba(0, 0, 0, 0.10);
+	transition: background-color 0.45s ease, border-color 0.45s ease, transform 0.15s ease;
+}
+
+.refresh-btn:active {
+	transform: scale(0.9);
+}
+
+.refresh-icon {
+	font-size: 32rpx;
+	line-height: 1;
+	color: var(--text);
+	transition: color 0.45s;
+}
+
+.refresh-spin {
+	animation: refresh-rotate 0.6s ease;
+}
+
+@keyframes refresh-rotate {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
 .seg {
 	position: relative;
 	display: flex;
 	flex-shrink: 0;
-	margin-left: 20rpx;
+	margin-left: 0;
 	width: 136rpx;
 	height: 60rpx;
 	padding: 4rpx;

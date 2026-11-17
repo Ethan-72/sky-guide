@@ -2,7 +2,7 @@
 	"name": "sky-guide",
 	"version": "1.0.0",
 	"private": true,
-	"description": "光遇每日攻略 · 禁术暗黑主题",
+	"description": "光遇每日任务与攻略",
 	"scripts": {
 		"dev:h5": "node scripts/run-uni.js",
 		"build:h5": "node scripts/run-uni.js build",

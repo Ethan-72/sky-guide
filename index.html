@@ -5,6 +5,27 @@
 	<!-- 不发送 Referer：ok.166.net 等图床有防盗链，带 Referer 会被 403 -->
 	<meta name="referrer" content="no-referrer" />
 	<script>
+		// 首屏底色跟随主题，避免重载瞬间露白底
+		(function () {
+			var mode, saved, dark;
+			try {
+				mode = localStorage.getItem('sky_guide_theme_mode');
+				saved = localStorage.getItem('sky_guide_theme');
+			} catch (e) {}
+			if (mode === 'manual' && (saved === 'dark' || saved === 'light')) {
+				dark = saved === 'dark';
+			} else {
+				var h = new Date().getHours();
+				dark = h < 6 || h >= 18;
+			}
+			document.documentElement.classList.add(dark ? 'initial-dark' : 'initial-light');
+		})();
+	</script>
+	<style>
+		html.initial-dark, html.initial-dark body { background: #07090E !important; }
+		html.initial-light, html.initial-light body { background: #EEF1F7 !important; }
+	</style>
+	<script>
 			var coverSupport =
 				'CSS' in window &&
 				typeof CSS.supports === 'function' &&
