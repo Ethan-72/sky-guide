@@ -1369,9 +1369,9 @@ export default {
 		// H5：原生 Canvas 2D 同步绘制 + toDataURL 导出，绕开 uni canvas 的异步回调
 		drawSharePosterH5(list) {
 			const L = this.measureShareLayout(list);
-			const canvas = document.getElementById('shareCanvas');
-			if (!canvas) throw new Error('canvas missing');
+			const canvas = document.createElement('canvas');
 			const ctx = canvas.getContext('2d');
+			if (!ctx) throw new Error('canvas 2d unavailable');
 			const W = L.W, H = L.H, PAD = L.PAD, cardH = L.cardH;
 			canvas.width = W;
 			canvas.height = H;
@@ -1449,16 +1449,31 @@ export default {
 			const dataUrl = canvas.toDataURL('image/png');
 			this.sharing = false;
 			clearTimeout(this._shareTimer);
-			uni.previewImage({ urls: [dataUrl], current: dataUrl });
-			setTimeout(() => uni.showToast({ title: '长按图片即可保存或分享', icon: 'none', duration: 2600 }), 400);
+			this.showPosterPreview(dataUrl);
+		},
+
+		// H5：原生全屏预览，base64 直接塞进 img，绕开 uni.previewImage 对 dataURL 的限制
+		showPosterPreview(dataUrl) {
+			const overlay = document.createElement('div');
+			overlay.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(6,8,16,0.94);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40rpx;';
+			const img = document.createElement('img');
+			img.src = dataUrl;
+			img.style.cssText = 'display:block;width:86vw;max-width:600px;height:auto;border-radius:24rpx;box-shadow:0 20rpx 80rpx rgba(0,0,0,0.6);';
+			const tip = document.createElement('div');
+			tip.textContent = '长按图片保存 · 点击空白处关闭';
+			tip.style.cssText = 'color:rgba(255,255,255,0.7);font-size:28rpx;';
+			overlay.appendChild(img);
+			overlay.appendChild(tip);
+			overlay.addEventListener('click', () => overlay.remove());
+			document.body.appendChild(overlay);
 		},
 
 		/* 量出每条任务要占几行，顺便把画布总高、日期文案一并算好 */
 		measureShareLayout(list) {
 			let ctx;
 			// #ifdef H5
-			const _c = document.getElementById('shareCanvas');
-			ctx = _c ? _c.getContext('2d') : null;
+			const _c = document.createElement('canvas');
+			ctx = _c.getContext('2d');
 			// #endif
 			// #ifndef H5
 			ctx = uni.createCanvasContext('shareCanvas', this);
