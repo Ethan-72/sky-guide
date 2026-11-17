@@ -1318,7 +1318,7 @@ export default {
 			});
 		},
 
-		// 分享图：离屏 Canvas 绘制后转临时图预览；画布移出屏幕（display:none 画不出），固定夜空风，带水印
+		// 分享图：H5 走原生 Canvas 同步绘制导出，其它端用 uni canvas
 		makeSharePoster() {
 			if (this.sharing) return;
 			const list = this.displayTasks;
@@ -1327,22 +1327,149 @@ export default {
 				return;
 			}
 			this.sharing = true;
+			// 兜底：任何环节卡住都能自动解锁，不会一直停在「生成中」
+			clearTimeout(this._shareTimer);
+			this._shareTimer = setTimeout(() => {
+				if (this.sharing) {
+					this.sharing = false;
+					uni.showToast({ title: '生成超时，请重试', icon: 'none' });
+				}
+			}, 8000);
+			// #ifdef H5
 			this.$nextTick(() => {
-				// 先量出布局（每条任务占几行 + 画布总高），再等画布尺寸真正更新后绘制
-				this._shareLayout = this.measureShareLayout(list);
-				this.shareCanvasH = this._shareLayout.H;
-				this.$nextTick(() => setTimeout(() => this.drawSharePoster(), 60));
+				try {
+					this.drawSharePosterH5(list);
+				} catch (e) {
+					this.shareFailed();
+				}
 			});
+			// #endif
+			// #ifndef H5
+			this.$nextTick(() => {
+				try {
+					this._shareLayout = this.measureShareLayout(list);
+					this.shareCanvasH = this._shareLayout.H;
+					this.$nextTick(() => setTimeout(() => {
+						try { this.drawSharePoster(); }
+						catch (e) { this.shareFailed(); }
+					}, 60));
+				} catch (e) {
+					this.shareFailed();
+				}
+			});
+			// #endif
+		},
+
+		shareFailed() {
+			this.sharing = false;
+			clearTimeout(this._shareTimer);
+			uni.showToast({ title: '生成失败，请重试', icon: 'none' });
+		},
+
+		// H5：原生 Canvas 2D 同步绘制 + toDataURL 导出，绕开 uni canvas 的异步回调
+		drawSharePosterH5(list) {
+			const L = this.measureShareLayout(list);
+			const canvas = document.getElementById('shareCanvas');
+			if (!canvas) throw new Error('canvas missing');
+			const ctx = canvas.getContext('2d');
+			const W = L.W, H = L.H, PAD = L.PAD, cardH = L.cardH;
+			canvas.width = W;
+			canvas.height = H;
+
+			const bg = ctx.createLinearGradient(0, 0, 0, H);
+			bg.addColorStop(0, '#0B0E1A');
+			bg.addColorStop(1, '#141B31');
+			ctx.fillStyle = bg;
+			ctx.fillRect(0, 0, W, H);
+
+			const blob = (x, y, r, c0) => {
+				const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+				g.addColorStop(0, c0);
+				g.addColorStop(1, 'rgba(0,0,0,0)');
+				ctx.fillStyle = g;
+				ctx.fillRect(x - r, y - r, r * 2, r * 2);
+			};
+			blob(90, 120, 260, 'rgba(96,128,255,0.35)');
+			blob(520, 320, 240, 'rgba(156,92,232,0.28)');
+			blob(300, H - 160, 260, 'rgba(0,188,214,0.20)');
+
+			const FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+			const fs = n => { ctx.font = n + 'px ' + FONT; };
+			ctx.textBaseline = 'middle';
+			fs(24); ctx.fillStyle = 'rgba(127,214,255,0.9)';
+			ctx.fillText('光遇每日任务', PAD + 6, 56);
+			fs(44); ctx.fillStyle = '#F2F4F8';
+			ctx.fillText(L.dateText, PAD + 6, 104);
+			const dateW = ctx.measureText(L.dateText).width;
+			fs(24); ctx.fillStyle = 'rgba(242,244,248,0.55)';
+			ctx.fillText(L.week, PAD + 10 + dateW + 60, 104);
+
+			const cardY = 150, cardX = 24, cardW = W - 48, R = 24;
+			ctx.beginPath();
+			ctx.moveTo(cardX + R, cardY);
+			ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, R);
+			ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, R);
+			ctx.arcTo(cardX, cardY + cardH, cardX, cardY, R);
+			ctx.arcTo(cardX, cardY, cardX + cardW, cardY, R);
+			ctx.closePath();
+			ctx.fillStyle = 'rgba(255,255,255,0.06)';
+			ctx.fill();
+			ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+			ctx.lineWidth = 1;
+			ctx.stroke();
+
+			let y = cardY + PAD + 15;
+			L.tasks.forEach((t, i) => {
+				const bx = cardX + PAD + 16;
+				ctx.beginPath();
+				ctx.arc(bx, y + 2, 15, 0, Math.PI * 2);
+				ctx.fillStyle = 'rgba(127,214,255,0.16)';
+				ctx.fill();
+				fs(16); ctx.fillStyle = '#7FD6FF';
+				ctx.textAlign = 'center';
+				ctx.fillText(String(i + 1), bx, y + 2);
+				ctx.textAlign = 'left';
+				fs(22); ctx.fillStyle = 'rgba(242,244,248,0.92)';
+				t.lines.forEach((ln, j) => {
+					ctx.fillText(ln, cardX + PAD + 46, y + j * 30 + 2);
+				});
+				y += Math.max(30, t.lines.length * 30) + 20;
+			});
+
+			if (L.hasJl) {
+				fs(20); ctx.fillStyle = '#B49BFF';
+				ctx.fillText('今日季蜡 · ' + this.jlToday, cardX + PAD + 6, y + 4);
+			}
+
+			fs(22); ctx.fillStyle = 'rgba(242,244,248,0.45)';
+			ctx.textAlign = 'center';
+			ctx.fillText('@冰块', W / 2, H - 34);
+			ctx.textAlign = 'left';
+
+			const dataUrl = canvas.toDataURL('image/png');
+			this.sharing = false;
+			clearTimeout(this._shareTimer);
+			uni.previewImage({ urls: [dataUrl], current: dataUrl });
+			setTimeout(() => uni.showToast({ title: '长按图片即可保存或分享', icon: 'none', duration: 2600 }), 400);
 		},
 
 		/* 量出每条任务要占几行，顺便把画布总高、日期文案一并算好 */
 		measureShareLayout(list) {
-			const ctx = uni.createCanvasContext('shareCanvas', this);
+			let ctx;
+			// #ifdef H5
+			const _c = document.getElementById('shareCanvas');
+			ctx = _c ? _c.getContext('2d') : null;
+			// #endif
+			// #ifndef H5
+			ctx = uni.createCanvasContext('shareCanvas', this);
+			// #endif
 			const W = 600, PAD = 26, TEXT_W = W - PAD * 2 - 46;
 			// 量宽度：measureText 不可用时退化为「字数 × 字号」估算
 			const measure = (text, size) => {
 				try {
-					ctx.setFontSize(size);
+					if (!ctx) return String(text).length * size;
+					if (typeof ctx.setFontSize === 'function') ctx.setFontSize(size);
+					else ctx.font = size + 'px sans-serif';
 					const w = ctx.measureText(String(text)).width;
 					if (w > 0) return w;
 				} catch (e) { /* 走估算 */ }
