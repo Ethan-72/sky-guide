@@ -1455,14 +1455,29 @@ export default {
 		// H5：原生全屏预览，base64 直接塞进 img，绕开 uni.previewImage 对 dataURL 的限制
 		showPosterPreview(dataUrl) {
 			const overlay = document.createElement('div');
-			overlay.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(6,8,16,0.94);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40rpx;';
+			overlay.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(6,8,16,0.94);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
 			const img = document.createElement('img');
 			img.src = dataUrl;
-			img.style.cssText = 'display:block;width:86vw;max-width:600px;height:auto;border-radius:24rpx;box-shadow:0 20rpx 80rpx rgba(0,0,0,0.6);';
+			img.style.cssText = 'display:block;width:86vw;max-width:600px;height:auto;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.6);';
+			const saveBtn = document.createElement('button');
+			saveBtn.textContent = '保存图片ovo';
+			saveBtn.style.cssText = 'border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.12);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;font-size:15px;font-weight:600;letter-spacing:0.5px;padding:10px 36px;border-radius:999px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.35);';
+			saveBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				const a = document.createElement('a');
+				a.href = dataUrl;
+				a.download = '冰块-每日任务.png';
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				saveBtn.textContent = '已保存 ovO';
+				setTimeout(() => { saveBtn.textContent = '保存图片ovo'; }, 1800);
+			});
 			const tip = document.createElement('div');
-			tip.textContent = '长按图片保存 · 点击空白处关闭';
-			tip.style.cssText = 'color:rgba(255,255,255,0.7);font-size:28rpx;';
+			tip.textContent = '也可长按图片保存 · 点击空白处关闭';
+			tip.style.cssText = 'color:rgba(255,255,255,0.55);font-size:12px;';
 			overlay.appendChild(img);
+			overlay.appendChild(saveBtn);
 			overlay.appendChild(tip);
 			overlay.addEventListener('click', () => overlay.remove());
 			document.body.appendChild(overlay);
