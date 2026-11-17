@@ -1,5 +1,5 @@
 <template>
-	<view class="page" :class="theme === 'dark' ? 'theme-dark' : 'theme-light'">
+	<view class="page" :class="[theme === 'dark' ? 'theme-dark' : 'theme-light', 'phase-' + phase]">
 
 		<!-- 液态玻璃背后的彩色光斑 -->
 		<view class="blob blob-1"></view>
@@ -382,6 +382,8 @@ export default {
 			// -------- 主题：dark / light；themeMode: auto 按时间 / manual 手动 --------
 			theme: 'dark',
 			themeMode: 'auto',
+			// 动态背景时段：dawn 清晨 / day 白天 / dusk 傍晚 / night 夜晚
+			phase: 'day',
 
 			// -------- 接口配置 --------
 			// 统一走相对路径 /api，由部署平台转发到 https://api.t1qq.com/api
@@ -705,6 +707,7 @@ export default {
 			this.themeMode = 'auto';
 			this.theme = this.autoTheme();
 		}
+		this.refreshPhase();
 		this.applyThemeBackground();
 
 		// 滑块初始位置直接对齐当前状态，首屏不播放动画
@@ -1041,6 +1044,19 @@ export default {
 		autoTheme() {
 			const hour = new Date().getHours();
 			return hour >= DAY_START_HOUR && hour < DAY_END_HOUR ? 'light' : 'dark';
+		},
+
+		/* 动态背景：按小时划四个时段，像 iPhone 灵动壁纸那样自动变 */
+		autoPhase() {
+			const h = new Date().getHours();
+			if (h >= 5 && h < 8) return 'dawn';
+			if (h >= 8 && h < 16) return 'day';
+			if (h >= 16 && h < 19) return 'dusk';
+			return 'night';
+		},
+		refreshPhase(h24) {
+			const p = this.autoPhase();
+			if (p !== this.phase) this.phase = p;
 		},
 
 		/* 长按切换控件：恢复「按时间自动」 */
@@ -1570,6 +1586,9 @@ export default {
 			const p2 = n => (n < 10 ? '0' + n : '' + n);
 			this.clockMer = h24 < 12 ? '上午' : '下午';
 			this.clockTime = p2(h12) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+
+			// 背景时段跟时钟同一拍：跨时段时页面背景自动渐变切换
+			this.refreshPhase(h24);
 
 			// 倒计时跟时钟同一拍走，保证两个数字永远同步
 			this.tickRefresh();
@@ -2108,22 +2127,24 @@ export default {
 	--text-dim: rgba(242, 244, 248, 0.62);
 	--text-faint: rgba(242, 244, 248, 0.38);
 
-	/* 玻璃：靠 backdrop-filter 折射背景，本体只留很淡的一层白 */
-	--glass-bg: rgba(255, 255, 255, 0.055);
-	--glass-bg-2: rgba(255, 255, 255, 0.02);
-	--glass-bd: rgba(255, 255, 255, 0.13);
-	--glass-hl: rgba(255, 255, 255, 0.30);   /* 上边缘高光 */
-	--glass-hl-btm: rgba(255, 255, 255, 0.05); /* 下边缘反光 */
-	--sheen: rgba(255, 255, 255, 0.11);       /* 左上柔光 */
-	--blur: 30px;
+	/* 玻璃：靠 backdrop-filter 折射背景，本体只留很淡的一层白
+	   iOS 27 质感：本体更透、边缘镜面更亮、模糊更厚 */
+	--glass-bg: rgba(255, 255, 255, 0.075);
+	--glass-bg-2: rgba(255, 255, 255, 0.035);
+	--glass-bd: rgba(255, 255, 255, 0.18);
+	--glass-hl: rgba(255, 255, 255, 0.55);   /* 上边缘镜面高光 */
+	--glass-hl-btm: rgba(255, 255, 255, 0.14); /* 下边缘反光 */
+	--glass-rim: rgba(255, 255, 255, 0.06);  /* 整圈细分镜面描边 */
+	--sheen: rgba(255, 255, 255, 0.16);       /* 左上柔光 */
+	--blur: 36px;
 
 	--line: rgba(255, 255, 255, 0.055);
 	--accent: #7FD6FF;
 	--accent-2: #B49BFF;
-	--blob-a: rgba(96, 128, 255, 0.40);
-	--blob-b: rgba(156, 92, 232, 0.30);
-	--blob-c: rgba(0, 188, 214, 0.22);
-	--shadow: 0 10px 30px rgba(0, 0, 0, 0.30), 0 2px 8px rgba(0, 0, 0, 0.18);
+	--blob-a: rgba(96, 128, 255, 0.50);
+	--blob-b: rgba(156, 92, 232, 0.42);
+	--blob-c: rgba(0, 188, 214, 0.30);
+	--shadow: 0 14px 38px rgba(0, 0, 0, 0.34), 0 3px 10px rgba(0, 0, 0, 0.20);
 	--btn-a: #7FD6FF;
 	--btn-b: #A9A0FF;
 	--btn-txt: #06121B;
@@ -2160,22 +2181,24 @@ export default {
 	--text-dim: rgba(11, 13, 18, 0.58);
 	--text-faint: rgba(11, 13, 18, 0.38);
 
-	/* 浅色下玻璃必须比背景「更白一点点」，靠模糊 + 高光区分层次 */
-	--glass-bg: rgba(255, 255, 255, 0.58);
-	--glass-bg-2: rgba(255, 255, 255, 0.42);
-	--glass-bd: rgba(255, 255, 255, 0.85);
-	--glass-hl: rgba(255, 255, 255, 0.95);
-	--glass-hl-btm: rgba(255, 255, 255, 0.35);
-	--sheen: rgba(255, 255, 255, 0.45);
-	--blur: 26px;
+	/* 浅色下玻璃必须比背景「更白一点点」，靠模糊 + 高光区分层次
+	   iOS 27 质感：奶白更透亮、镜面边缘更锐 */
+	--glass-bg: rgba(255, 255, 255, 0.66);
+	--glass-bg-2: rgba(255, 255, 255, 0.46);
+	--glass-bd: rgba(255, 255, 255, 0.92);
+	--glass-hl: rgba(255, 255, 255, 1);
+	--glass-hl-btm: rgba(255, 255, 255, 0.55);
+	--glass-rim: rgba(255, 255, 255, 0.65);  /* 整圈细分镜面描边 */
+	--sheen: rgba(255, 255, 255, 0.55);
+	--blur: 30px;
 
 	--line: rgba(11, 13, 18, 0.055);
 	--accent: #0A84FF;
 	--accent-2: #7B5CFF;
-	--blob-a: rgba(120, 170, 255, 0.34);
-	--blob-b: rgba(178, 140, 255, 0.26);
-	--blob-c: rgba(110, 214, 214, 0.22);
-	--shadow: 0 10px 26px rgba(22, 34, 56, 0.09), 0 2px 6px rgba(22, 34, 56, 0.05);
+	--blob-a: rgba(120, 170, 255, 0.42);
+	--blob-b: rgba(178, 140, 255, 0.34);
+	--blob-c: rgba(110, 214, 214, 0.28);
+	--shadow: 0 14px 34px rgba(22, 34, 56, 0.10), 0 3px 8px rgba(22, 34, 56, 0.06);
 	--btn-a: #0A84FF;
 	--btn-b: #6E63FF;
 	--btn-txt: #FFFFFF;
@@ -2199,6 +2222,66 @@ export default {
 
 	--clock-ink: #0B0D12;
 	--clock-glow: rgba(10, 132, 255, 0.30);
+}
+
+/* ==========================================================
+   动态背景：随时间变化的分时天空（iPhone 灵动壁纸风格）
+   只覆盖 --bg-grad，文字 / 玻璃配色仍由日夜主题控制。
+   双主题 × 四时段各给一版，手动切主题时也不会穿帮。
+   ========================================================== */
+/* 清晨 5-8 点：地平线泛粉的天光 */
+.phase-dawn.theme-dark {
+	--bg-grad: radial-gradient(120% 70% at 50% 105%, #6E3E58 0%, rgba(20, 26, 48, 0) 60%),
+		radial-gradient(110% 60% at 80% -8%, #2A2148 0%, rgba(14, 16, 30, 0) 55%),
+		linear-gradient(180deg, #10142A 0%, #2B2144 62%, #5C3550 100%);
+}
+.phase-dawn.theme-light {
+	--bg-grad: radial-gradient(120% 70% at 50% 108%, #FFD9C2 0%, rgba(246, 242, 250, 0) 62%),
+		radial-gradient(110% 60% at 12% -8%, #C9D6F5 0%, rgba(246, 242, 250, 0) 55%),
+		linear-gradient(180deg, #B9CFF2 0%, #E3CCEC 55%, #FBE7DB 100%);
+}
+
+/* 白天 8-16 点：蓝天白云 */
+.phase-day.theme-light {
+	--bg-grad: radial-gradient(130% 70% at 50% -12%, #7FB4EE 0%, rgba(158, 205, 245, 0) 58%),
+		radial-gradient(90% 50% at 82% 6%, #A9D3F4 0%, rgba(158, 205, 245, 0) 60%),
+		linear-gradient(180deg, #8FC4F5 0%, #BBDEF8 42%, #E8F2FB 78%, #F3F7FC 100%);
+}
+.phase-day.theme-dark {
+	--bg-grad: radial-gradient(120% 80% at 12% -10%, #16407A 0%, rgba(8, 9, 12, 0) 55%),
+		radial-gradient(100% 70% at 92% 8%, #1B4E86 0%, rgba(8, 9, 12, 0) 52%),
+		linear-gradient(180deg, #0E2A50 0%, #122F55 60%, #16355C 100%);
+}
+
+/* 傍晚 16-19 点：橙紫晚霞 */
+.phase-dusk.theme-light {
+	--bg-grad: radial-gradient(120% 66% at 50% 108%, #FFC98B 0%, rgba(247, 240, 248, 0) 60%),
+		radial-gradient(110% 58% at 15% -8%, #9BB5EC 0%, rgba(247, 240, 248, 0) 55%),
+		linear-gradient(180deg, #8FA8E4 0%, #D9A2DC 45%, #F49C90 76%, #FFC48C 100%);
+}
+.phase-dusk.theme-dark {
+	--bg-grad: radial-gradient(120% 66% at 50% 108%, #8A4A44 0%, rgba(19, 20, 40, 0) 60%),
+		radial-gradient(110% 58% at 85% -8%, #2C2150 0%, rgba(19, 20, 40, 0) 55%),
+		linear-gradient(180deg, #131428 0%, #2E2352 52%, #5B3364 82%, #7A4448 100%);
+}
+
+/* 夜晚 19-5 点：深空 + 星星（小白点是手摆的星子） */
+.phase-night.theme-dark {
+	--bg-grad:
+		radial-gradient(1px 1px at 22% 14%, rgba(255, 255, 255, 0.9) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(1px 1px at 68% 9%, rgba(255, 255, 255, 0.7) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(2px 2px at 84% 22%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(1px 1px at 12% 34%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(1px 1px at 46% 6%, rgba(255, 255, 255, 0.85) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(1px 1px at 58% 28%, rgba(255, 255, 255, 0.5) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(1px 1px at 92% 42%, rgba(255, 255, 255, 0.55) 50%, rgba(255, 255, 255, 0) 55%),
+		radial-gradient(120% 80% at 12% -10%, #171B2B 0%, rgba(8, 9, 12, 0) 55%),
+		radial-gradient(100% 70% at 92% 8%, #1A1630 0%, rgba(8, 9, 12, 0) 52%),
+		linear-gradient(180deg, #0A0B10 0%, #07080B 100%);
+}
+.phase-night.theme-light {
+	--bg-grad: radial-gradient(120% 70% at 15% -10%, #6C7FB8 0%, rgba(226, 231, 243, 0) 55%),
+		linear-gradient(180deg, #5F74AC 0%, #8FA0CE 48%, #C9D2EA 100%);
 }
 
 .page {
@@ -2266,28 +2349,33 @@ export default {
 .glass {
 	position: relative;
 	overflow: hidden;
-	border-radius: 44rpx;
+	border-radius: 48rpx;
 	border: 1rpx solid var(--glass-bd);
 	background-color: var(--glass-bg);
 	background-image: linear-gradient(168deg, var(--glass-bg-2) 0%, rgba(255, 255, 255, 0) 48%);
-	-webkit-backdrop-filter: blur(28px) saturate(180%);
-	backdrop-filter: blur(28px) saturate(180%);
+	-webkit-backdrop-filter: blur(var(--blur)) saturate(200%);
+	backdrop-filter: blur(var(--blur)) saturate(200%);
 	box-shadow: var(--shadow),
 		inset 0 1rpx 0 var(--glass-hl),
-		inset 0 -1rpx 0 var(--glass-hl-btm);
+		inset 0 -1rpx 0 var(--glass-hl-btm),
+		inset 0 0 0 1rpx var(--glass-rim);
 	transition: background-color 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
 }
 
-/* 左上角柔光：模拟光源打过来的镜面反射，面积小、透明度低，不压内容 */
+/* 左上角柔光：模拟光源打过来的镜面反射，面积小、透明度低，不压内容
+   iOS 27：再加一条左上斜向的窄高光条，模拟玻璃曲面的「聚光棱线」 */
 .glass::before {
 	content: '';
 	position: absolute;
 	top: 0;
 	left: 0;
 	right: 0;
-	height: 60%;
+	height: 70%;
 	border-radius: inherit;
-	background-image: radial-gradient(115% 90% at 16% -10%, var(--sheen) 0%, rgba(255, 255, 255, 0) 62%);
+	background-image:
+		linear-gradient(115deg, var(--sheen) 0%, rgba(255, 255, 255, 0) 34%),
+		radial-gradient(115% 90% at 16% -10%, var(--sheen) 0%, rgba(255, 255, 255, 0) 62%);
+	opacity: 0.7;
 	pointer-events: none;
 }
 
@@ -2338,11 +2426,12 @@ export default {
 	border: 1rpx solid var(--liq-bd);
 	background-image: linear-gradient(158deg, var(--liq-a) 0%, var(--liq-b) 100%);
 	box-shadow:
-		0 3rpx 10rpx rgba(0, 0, 0, 0.14),
+		0 4rpx 14rpx rgba(0, 0, 0, 0.16),
 		inset 0 1rpx 0 var(--liq-hl),
-		inset 0 -1rpx 0 var(--liq-hl-btm);
-	-webkit-backdrop-filter: blur(14px) saturate(200%);
-	backdrop-filter: blur(14px) saturate(200%);
+		inset 0 -1rpx 0 var(--liq-hl-btm),
+		inset 0 8rpx 18rpx -10rpx var(--liq-hl);
+	-webkit-backdrop-filter: blur(16px) saturate(220%);
+	backdrop-filter: blur(16px) saturate(220%);
 	transform: translate3d(calc(var(--idx, 1) * 100%), 0, 0) scale(var(--sx, 1), var(--sy, 1));
 	transform-origin: 50% 50%;
 	will-change: transform;
@@ -2375,9 +2464,9 @@ export default {
 	overflow: hidden;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
-	-webkit-backdrop-filter: blur(18px) saturate(180%);
-	backdrop-filter: blur(18px) saturate(180%);
-	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm), 0 2px 8px rgba(0, 0, 0, 0.08);
+	-webkit-backdrop-filter: blur(20px) saturate(200%);
+	backdrop-filter: blur(20px) saturate(200%);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm), inset 0 0 0 1rpx var(--glass-rim), 0 2px 10px rgba(0, 0, 0, 0.10);
 }
 
 .seg-thumb {
@@ -2426,9 +2515,9 @@ export default {
 	overflow: hidden;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
-	-webkit-backdrop-filter: blur(18px) saturate(180%);
-	backdrop-filter: blur(18px) saturate(180%);
-	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
+	-webkit-backdrop-filter: blur(20px) saturate(200%);
+	backdrop-filter: blur(20px) saturate(200%);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm), inset 0 0 0 1rpx var(--glass-rim);
 }
 
 /* 时钟下方：距刷新倒计时，与时钟右对齐成一组 */
