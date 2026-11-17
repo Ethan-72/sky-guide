@@ -4,7 +4,7 @@
 		<link rel="stylesheet" href="/sky-guide/assets/uni.a75bb826.css">
 
 	<meta charset="UTF-8" />
-	<!-- 不发送 Referer：ok.166.net 等图床有防盗链，带 Referer 会被 403 -->
+	<!-- 红石天气、活动日历是接口返回的第三方图床外链，带 Referer 会被防盗链拦；整站关闭 Referer 让这些图能显示 -->
 	<meta name="referrer" content="no-referrer" />
 	<script>
 		// 首屏底色跟随主题，避免重载瞬间露白底
@@ -14,18 +14,17 @@
 				mode = localStorage.getItem('sky_guide_theme_mode');
 				saved = localStorage.getItem('sky_guide_theme');
 			} catch (e) {}
-			if (mode === 'manual' && (saved === 'dark' || saved === 'light')) {
-				dark = saved === 'dark';
-			} else {
-				var h = new Date().getHours();
-				dark = h < 6 || h >= 18;
-			}
-			document.documentElement.classList.add(dark ? 'initial-dark' : 'initial-light');
+			var h = new Date().getHours();
+			dark = mode === 'manual' && (saved === 'dark' || saved === 'light')
+				? saved === 'dark'
+				: (h < 6 || h >= 18);
+			document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 		})();
 	</script>
 	<style>
-		html.initial-dark, html.initial-dark body { background: #07090E !important; }
-		html.initial-light, html.initial-light body { background: #EEF1F7 !important; }
+		html[data-theme="dark"] { --boot-bg: #07090E; }
+		html[data-theme="light"] { --boot-bg: #EEF1F7; }
+		html, body { background: var(--boot-bg, #EEF1F7); }
 	</style>
 	<script>
 			var coverSupport =
