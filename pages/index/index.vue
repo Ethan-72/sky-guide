@@ -41,7 +41,6 @@
 					</view>
 				</view>
 
-				<text class="hero-source">数据来源：@今天游离翻车了吗</text>
 				<text class="hero-updated" v-if="isToday && updatedAt">更新于 {{ updatedAt }}</text>
 			</view>
 
@@ -176,11 +175,24 @@
 			</view>
 			<!-- #endif -->
 
-			<!-- 主按钮 -->
+			<!-- 主按钮：复制任务 + 生成分享图，两个并排 -->
 
-			<view class="primary-btn" hover-class="primary-btn-active" :hover-stay-time="80" @click="copyTasks">
-				<text class="primary-txt">一键复制任务</text>
+			<view class="btn-row">
+				<view class="primary-btn" hover-class="primary-btn-active" :hover-stay-time="80" @click="copyTasks">
+					<text class="primary-txt">一键复制任务</text>
+				</view>
+				<view class="primary-btn" hover-class="primary-btn-active" :hover-stay-time="80" @click="makeSharePoster">
+					<text class="primary-txt">{{ sharing ? '生成中…' : '生成分享图' }}</text>
+				</view>
 			</view>
+
+			<!-- 分享图离屏画布：定位移出屏幕（不能用 display:none，否则 H5 画不出内容） -->
+			<canvas
+				class="share-canvas"
+				canvas-id="shareCanvas"
+				id="shareCanvas"
+				:style="{ width: '600px', height: shareCanvasH + 'px' }"
+			></canvas>
 
 			<text class="footer">仅供个人游戏参考</text>
 
@@ -416,6 +428,10 @@ export default {
 			segIdx: 1, // 日=0 / 夜=1
 			segStretch: 0,
 			segLead: '0%',
+
+			// -------- 一键生成分享图（Canvas 离屏绘制） --------
+			sharing: false, // 正在生成中，防重复点击
+			shareCanvasH: 1060, // 离屏画布高度（px），按任务条数动态计算
 
 			// -------- 更多攻略（季蜡 / 红石 / 复刻先祖 / 免费魔法）--------
 			// status: idle 未加载 / loading 加载中 / ok 可看 / empty 今日无内容 /
@@ -1309,6 +1325,182 @@ export default {
 			uni.setClipboardData({
 				data: lines.join('\n'),
 				success: () => uni.showToast({ title: '文案已复制，快去分享吧！', icon: 'none' })
+			});
+		},
+
+		/* ---------------- 一键生成分享图（Canvas 离屏绘制） ----------------
+		 * 流程：点按钮 → 量文字算行数/总高 → 设画布高度 → 绘制 → 导出临时图 → 复用 previewImage 预览
+		 * · 画布必须用定位移出屏幕，display:none 在 H5 端画不出内容
+		 * · 统一深色夜空风 + 光斑，不跟随日夜主题，分享出去更好看
+		 * · 底部水印「@冰块」，长按预览图即可保存 */
+		makeSharePoster() {
+			if (this.sharing) return;
+			const list = this.displayTasks;
+			if (!list.length) {
+				uni.showToast({ title: '这一天暂无任务', icon: 'none' });
+				return;
+			}
+			this.sharing = true;
+			this.$nextTick(() => {
+				// 先量出布局（每条任务占几行 + 画布总高），再等画布尺寸真正更新后绘制
+				this._shareLayout = this.measureShareLayout(list);
+				this.shareCanvasH = this._shareLayout.H;
+				this.$nextTick(() => setTimeout(() => this.drawSharePoster(), 60));
+			});
+		},
+
+		/* 量出每条任务要占几行，顺便把画布总高、日期文案一并算好 */
+		measureShareLayout(list) {
+			const ctx = uni.createCanvasContext('shareCanvas', this);
+			const W = 600, PAD = 26, TEXT_W = W - PAD * 2 - 46;
+			// 量宽度：measureText 不可用时退化为「字数 × 字号」估算
+			const measure = (text, size) => {
+				try {
+					ctx.setFontSize(size);
+					const w = ctx.measureText(String(text)).width;
+					if (w > 0) return w;
+				} catch (e) { /* 走估算 */ }
+				return String(text).length * size;
+			};
+			const wrap = (text, size, maxW) => {
+				const lines = [];
+				let line = '';
+				for (const ch of String(text)) {
+					if (line && measure(line + ch, size) > maxW) {
+						lines.push(line);
+						line = ch;
+					} else {
+						line += ch;
+					}
+				}
+				if (line) lines.push(line);
+				return lines.length ? lines : [''];
+			};
+
+			const d = new Date();
+			d.setDate(d.getDate() + this.dayOffset);
+			const hasJl = this.dayOffset === 0 && !!this.jlToday;
+			const tasks = list.map(t => ({ text: t.text, lines: wrap(t.text, 22, TEXT_W) }));
+			const tasksH = tasks.reduce((s, t) => s + Math.max(30, t.lines.length * 30) + 20, 0);
+			const cardH = PAD * 2 + tasksH + (hasJl ? 44 : 0);
+			const H = Math.round(150 + cardH + 36 + 60);
+			return {
+				W, H, PAD, cardH, tasks, hasJl,
+				dateText: (d.getMonth() + 1) + '月' + d.getDate() + '日',
+				week: '星期' + '日一二三四五六'[d.getDay()]
+			};
+		},
+
+		/* 真正绘制并导出 */
+		drawSharePoster() {
+			const L = this._shareLayout;
+			if (!L) {
+				this.sharing = false;
+				return;
+			}
+			const ctx = uni.createCanvasContext('shareCanvas', this);
+			const { W, H, PAD, cardH } = L;
+
+			/* 背景：深夜蓝渐变 */
+			const bg = ctx.createLinearGradient(0, 0, 0, H);
+			bg.addColorStop(0, '#0B0E1A');
+			bg.addColorStop(1, '#141B31');
+			ctx.setFillStyle(bg);
+			ctx.fillRect(0, 0, W, H);
+
+			/* 光斑：三团彩色径向渐变，对应页面里的 blob 光斑 */
+			const blob = (x, y, r, c0) => {
+				const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+				g.addColorStop(0, c0);
+				g.addColorStop(1, 'rgba(0,0,0,0)');
+				ctx.setFillStyle(g);
+				ctx.fillRect(x - r, y - r, r * 2, r * 2);
+			};
+			blob(90, 120, 260, 'rgba(96,128,255,0.35)');
+			blob(520, 320, 240, 'rgba(156,92,232,0.28)');
+			blob(300, H - 160, 260, 'rgba(0,188,214,0.20)');
+
+			/* 顶部：小标 + 大日期 + 星期 */
+			ctx.setTextBaseline('middle');
+			ctx.setFontSize(24);
+			ctx.setFillStyle('rgba(127,214,255,0.9)');
+			ctx.fillText('光遇每日任务', PAD + 6, 56);
+			ctx.setFontSize(44);
+			ctx.setFillStyle('#F2F4F8');
+			ctx.fillText(L.dateText, PAD + 6, 104);
+			ctx.setFontSize(24);
+			ctx.setFillStyle('rgba(242,244,248,0.55)');
+			ctx.fillText(L.week, PAD + 10 + ctx.measureText(L.dateText).width + 60, 104);
+
+			/* 玻璃卡片：半透明白 + 细描边，和页面里的 .glass 一个味道 */
+			const cardY = 150, cardX = 24, cardW = W - 48, R = 24;
+			ctx.beginPath();
+			ctx.moveTo(cardX + R, cardY);
+			ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, R);
+			ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, R);
+			ctx.arcTo(cardX, cardY + cardH, cardX, cardY, R);
+			ctx.arcTo(cardX, cardY, cardX + cardW, cardY, R);
+			ctx.closePath();
+			ctx.setFillStyle('rgba(255,255,255,0.06)');
+			ctx.fill();
+			ctx.setStrokeStyle('rgba(255,255,255,0.16)');
+			ctx.setLineWidth(1);
+			ctx.stroke();
+
+			/* 任务列表：序号徽章 + 自动换行文案 */
+			let y = cardY + PAD + 15;
+			L.tasks.forEach((t, i) => {
+				const bx = cardX + PAD + 16;
+				ctx.beginPath();
+				ctx.arc(bx, y + 2, 15, 0, Math.PI * 2);
+				ctx.setFillStyle('rgba(127,214,255,0.16)');
+				ctx.fill();
+				ctx.setFontSize(16);
+				ctx.setFillStyle('#7FD6FF');
+				ctx.setTextAlign('center');
+				ctx.fillText(String(i + 1), bx, y + 2);
+				ctx.setTextAlign('left');
+
+				ctx.setFontSize(22);
+				ctx.setFillStyle('rgba(242,244,248,0.92)');
+				t.lines.forEach((ln, j) => {
+					ctx.fillText(ln, cardX + PAD + 46, y + j * 30 + 2);
+				});
+				y += Math.max(30, t.lines.length * 30) + 20;
+			});
+
+			/* 季蜡位置：只有今天有数据才画 */
+			if (L.hasJl) {
+				ctx.setFontSize(20);
+				ctx.setFillStyle('#B49BFF');
+				ctx.fillText('今日季蜡 · ' + this.jlToday, cardX + PAD + 6, y + 4);
+			}
+
+			/* 底部水印 */
+			ctx.setFontSize(22);
+			ctx.setFillStyle('rgba(242,244,248,0.45)');
+			ctx.setTextAlign('center');
+			ctx.fillText('@冰块', W / 2, H - 34);
+			ctx.setTextAlign('left');
+
+			/* 导出：draw 完成后转临时文件，再复用现有的大图预览 */
+			ctx.draw(false, () => {
+				setTimeout(() => {
+					uni.canvasToTempFilePath({
+						canvasId: 'shareCanvas',
+						fileType: 'png',
+						quality: 1,
+						success: (res) => {
+							this.sharing = false;
+							uni.previewImage({ urls: [res.tempFilePath], current: res.tempFilePath });
+							setTimeout(() => uni.showToast({ title: '长按图片即可保存或分享', icon: 'none', duration: 2600 }), 400);
+						},
+						fail: () => {
+							this.sharing = false;
+							uni.showToast({ title: '生成失败，请重试', icon: 'none' });
+						}
+					}, this);
+				}, 120);
 			});
 		},
 
@@ -2354,14 +2546,6 @@ export default {
 	transition: color 0.45s;
 }
 
-.hero-source {
-	display: block;
-	margin-top: 16rpx;
-	font-size: 22rpx;
-	color: var(--text-dim);
-	transition: color 0.45s;
-}
-
 .hero-updated {
 	display: block;
 	margin-top: 8rpx;
@@ -2453,6 +2637,8 @@ export default {
 /* ---------- 攻略图 ---------- */
 .poster-card {
 	padding: 0;
+	/* 长图底部自带的来源水印条：靠负 margin + 裁切整体藏掉 */
+	overflow: hidden;
 }
 
 .poster {
@@ -2460,6 +2646,8 @@ export default {
 	width: 100%;
 	height: auto;
 	min-height: 360rpx;
+	/* 底部裁掉一条，遮住长图自带的「数据来源」水印字（只有 H5 静态图上会带） */
+	margin-bottom: -32rpx;
 }
 
 .poster-fallback {
@@ -2496,6 +2684,18 @@ export default {
 }
 
 /* ---------- 主按钮 ---------- */
+/* 复制 + 分享图 两个按钮并排 */
+.btn-row {
+	display: flex;
+	gap: 20rpx;
+	margin-top: 46rpx;
+}
+
+.btn-row .primary-btn {
+	flex: 1;
+	margin-top: 0;
+}
+
 .primary-btn {
 	position: relative;
 	display: flex;
@@ -2546,6 +2746,18 @@ export default {
 	letter-spacing: 2rpx;
 	color: var(--text-faint);
 	transition: color 0.45s;
+}
+
+/* ---------- 分享图离屏画布 ----------
+ * 定位移出屏幕而不是 display:none：
+ * H5 端画布不可见时 getContext 拿不到内容，导出会是空白图 */
+.share-canvas {
+	position: fixed;
+	left: -9999px;
+	top: 0;
+	width: 600px;
+	height: 1060px;
+	pointer-events: none;
 }
 
 /* ---------- 更多攻略：横滑卡片 ---------- */
