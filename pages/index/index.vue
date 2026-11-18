@@ -240,36 +240,53 @@
 						</view>
 					</view>
 
-					<!-- 敲木鱼 -->
-					<view class="play-body" v-else-if="playView === 'muyu'">
-						<view class="muyu-stage" @click="tapMuyu">
-							<text
-								class="muyu-pop"
-								v-for="p in muyuPops"
-								:key="p.id"
-								:style="{ left: 'calc(50% + ' + p.x + 'px)' }"
-							>{{ p.text }}</text>
-
-							<view class="muyu-halo" :class="{ 'muyu-halo-on': muyuHit }"></view>
-
-							<view class="muyu-wrap" :class="{ 'muyu-hit': muyuHit }">
-								<!-- 木槌 -->
-								<view class="muyu-stick" :class="{ 'muyu-stick-swing': muyuHit }">
-									<view class="muyu-stick-head"></view>
-									<view class="muyu-stick-bar"></view>
-								</view>
-								<!-- 木鱼本体：椭圆鱼身 + 顶部开口 + 木纹 + 玻璃高光 -->
-								<view class="muyu-body">
-									<view class="muyu-slit"></view>
-									<view class="muyu-grain"></view>
-									<view class="muyu-gloss"></view>
-								</view>
-								<view class="muyu-tail"></view>
+					<!-- 摸小猫 -->
+					<view class="play-body" v-else-if="playView === 'cat'">
+						<!-- 左上角：花色选择 -->
+						<view class="cat-coatbar">
+							<text class="cat-coat-label">花色</text>
+							<view class="cat-coat-dots">
+								<view
+									class="cat-coat-dot"
+									v-for="c in catCoats"
+									:key="c.key"
+									:class="['cat-dot-' + c.key, { 'cat-dot-on': catCoat === c.key }]"
+									@click="pickCoat(c.key)"
+								></view>
 							</view>
-
-							<text class="muyu-hint">轻点木鱼，功德 +1</text>
+							<text class="cat-coat-name">{{ catCoatName }}</text>
 						</view>
-						<text class="muyu-count">已积累 <text class="muyu-num">{{ muyuCount }}</text> 点功德</text>
+
+						<view class="cat-stage" @click="patCat">
+							<!-- 爱心粒子 -->
+							<view
+								class="cat-heart"
+								v-for="h in catHearts"
+								:key="h.id"
+								:style="{
+									left: 'calc(50% + ' + h.x + 'rpx)',
+									top: h.y + 'rpx',
+									width: h.size + 'rpx',
+									height: h.size + 'rpx',
+									animationDelay: h.delay + 'ms',
+									'--hrot': h.rot + 'deg'
+								}"
+							></view>
+
+							<view class="cat-halo" :class="{ 'cat-halo-on': catHit }"></view>
+
+							<!-- 写实猫头照片：花色切换只换 src -->
+							<image
+								class="cat-photo"
+								:class="{ 'cat-patted': catHit }"
+								:src="catPhotoSrc"
+								mode="widthFix"
+								draggable="false"
+							></image>
+
+							<text class="cat-hint">轻轻摸摸它，爱心 +1</text>
+						</view>
+						<text class="cat-count">已收获 <text class="cat-num">{{ catCount }}</text> 颗爱心</text>
 					</view>
 
 					<!-- 光遇抽签 -->
@@ -425,13 +442,21 @@ export default {
 			refreshTip: '',
 			clockTimer: 0, // rAF 不可用时的降级定时器句柄
 
-			// -------- 娱乐悬浮球：敲木鱼 / 抽签 / 答案之书 / 计算器（纯本地，无请求） --------
+			// -------- 娱乐悬浮球：摸小猫 / 抽签 / 答案之书 / 计算器（纯本地，无请求） --------
 			playOpen: false,
-			playView: 'list', // list 入口列表 / muyu / sign / answer / calc
-			muyuCount: 0, // 累计功德
-			muyuPops: [], // 飘字动画队列 { id, text, x }
-			muyuSeq: 0, // 飘字唯一 id
-			muyuHit: false, // 木鱼敲击动画开关（点一下置 true，320ms 后复位）
+			playView: 'list', // list 入口列表 / cat / sign / answer / calc
+			catCount: 0, // 累计爱心
+			catHearts: [], // 爱心粒子队列 { id, x, y, size, rot, delay }
+			catSeq: 0, // 爱心唯一 id
+			catHit: false, // 抚摸动画开关（点一下置 true，360ms 后复位）
+			catCoat: 'orange', // 当前花色 key
+			// 4 种花色：key 对应 static/cats/<key>.png，name 显示在左上角
+			catCoats: [
+				{ key: 'orange', name: '橘猫' },
+				{ key: 'siamese', name: '暹罗猫' },
+				{ key: 'calico', name: '三花猫' },
+				{ key: 'cow', name: '奶牛猫' }
+			],
 			signResult: null, // { level, text, tone }
 			signRolling: false,
 			answerText: '',
@@ -516,7 +541,6 @@ export default {
 				'再跑一张图，你就想通了 (￣▽￣)ノ',
 				'今天的你值得一点小幸运 (｡･ω･｡)ﾉ♡'
 			],
-			muyuWords: ['功德 +1', '烛火 +1', '心诚则灵 +1', '光之子 +1'],
 
 			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
 			mockTasks: [
@@ -581,9 +605,19 @@ export default {
 			return this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
 		},
 
+		// 当前花色的猫头照片路径
+		catPhotoSrc() {
+			return '/static/cats/' + this.catCoat + '.png';
+		},
+		// 左上角当前花色的中文名（computed，缓存）
+		catCoatName() {
+			const c = this.catCoats.find(x => x.key === this.catCoat);
+			return c ? c.name : '橘猫';
+		},
+
 		/* -------- 娱乐抽屉 -------- */
 		playTitle() {
-			if (this.playView === 'muyu') return '敲木鱼';
+			if (this.playView === 'cat') return '摸小猫';
 			if (this.playView === 'sign') return '光遇抽签';
 			if (this.playView === 'answer') return '答案之书';
 			if (this.playView === 'calc') return '计算器';
@@ -592,7 +626,7 @@ export default {
 
 		playItems() {
 			return [
-				{ key: 'muyu', icon: '木', name: '敲木鱼', desc: '轻点一下，功德 +1' },
+				{ key: 'cat', icon: '猫', name: '摸小猫', desc: '轻轻一摸，爱心 +1' },
 				{ key: 'sign', icon: '签', name: '光遇抽签', desc: '今日运势，玄学一把' },
 				{ key: 'answer', icon: '书', name: '答案之书', desc: '心里默念问题，翻开一页' },
 				{ key: 'calc', icon: '算', name: '计算器', desc: '加减乘除，随手算一算' }
@@ -700,7 +734,7 @@ export default {
 		this.prefetchGuideTexts();
 		// 复刻先祖若处于休赛期，卡片直接标「本期已结束」
 		this.precheckEndedGuide();
-		// 首次触摸/点击就解锁音频：敲木鱼第一下即可出声（不支持的浏览器静默降级）
+		// 首次触摸/点击就解锁音频：摸小猫第一下即可出声（不支持的浏览器静默降级）
 		if (typeof document !== 'undefined' && document.addEventListener) {
 			const unlock = () => {
 				this.ensureAudio();
@@ -1718,7 +1752,7 @@ export default {
 			this.refreshTip = h > 0 ? `距刷新 ${h}小时${m}分` : `距刷新 ${m}分`;
 		},
 
-		/* ---------------- 娱乐抽屉：敲木鱼 / 抽签 / 答案之书 ---------------- */
+		/* ---------------- 娱乐抽屉：摸小猫 / 抽签 / 答案之书 ---------------- */
 		openPlay() {
 			this.playView = 'list';
 			this.playOpen = true;
@@ -1736,30 +1770,45 @@ export default {
 			this.playView = 'list';
 		},
 
-		/* 敲木鱼：本地累加 + 飘字 + 震动 + 合成音效，不发任何请求 */
-		tapMuyu() {
-			this.muyuCount = this.muyuCount + 1;
-			const words = this.muyuWords;
-			const id = ++this.muyuSeq;
-			this.muyuPops.push({
-				id,
-				text: words[Math.floor(Math.random() * words.length)],
-				x: Math.round((Math.random() * 2 - 1) * 44)
-			});
-			setTimeout(() => {
-				this.muyuPops = this.muyuPops.filter(p => p.id !== id);
-			}, 1100);
+		/* ---------------- 摸小猫 ---------------- */
+		/* 切换花色：点一下左上角色块，猫的毛色/斑纹跟着变 */
+		pickCoat(key) {
+			if (this.catCoat === key) return;
+			this.catCoat = key;
+			this.buzz();
+		},
 
-			// 缩小再弹回的物理反馈：连点时先复位再重新触发 CSS 动画
-			this.muyuHit = false;
-			this.$nextTick(() => {
-				this.muyuHit = true;
+		/* 摸一下：本地累加 + 喷一把爱心 + 眯眼蹭蹭 + 震动 + 合成呼噜声，不发任何请求 */
+		patCat() {
+			this.catCount = this.catCount + 1;
+
+			// 一次冒出 5~7 颗爱心，随机横向位置/大小/旋转/延迟，飘上去后自动回收
+			const n = 5 + Math.floor(Math.random() * 3);
+			for (let i = 0; i < n; i++) {
+				const id = ++this.catSeq;
+				this.catHearts.push({
+					id,
+					x: Math.round((Math.random() * 2 - 1) * 130),
+					y: 120 + Math.round(Math.random() * 60),
+					size: 26 + Math.round(Math.random() * 26),
+					rot: Math.round((Math.random() * 2 - 1) * 34),
+					delay: Math.round(Math.random() * 160)
+				});
 				setTimeout(() => {
-					this.muyuHit = false;
-				}, 340);
+					this.catHearts = this.catHearts.filter(h => h.id !== id);
+				}, 1500 + Math.round(Math.random() * 300));
+			}
+
+			// 被摸反馈：眯眼 + 身体缩一下再弹回，连点时先复位再重新触发动画
+			this.catHit = false;
+			this.$nextTick(() => {
+				this.catHit = true;
+				setTimeout(() => {
+					this.catHit = false;
+				}, 380);
 			});
 
-			this.knock();
+			this.purr();
 			this.buzz();
 		},
 
@@ -1776,8 +1825,8 @@ export default {
 			}
 		},
 
-		// 现场合成一记「咚」：低频正弦下滑 + 木头脆响噪声，不需要音频文件
-		knock() {
+		// 现场合成一记轻柔的「呼噜~」：低频三角波 + 缓慢颤音(LFO)，像猫被摸舒服了
+		purr() {
 			try {
 				this.ensureAudio();
 				const ac = this._ac;
@@ -1785,39 +1834,32 @@ export default {
 				if (ac.state === 'suspended' && ac.resume) ac.resume();
 				const t = ac.currentTime;
 
-				// ① 木鱼共鸣：正弦从 220Hz 迅速落到 62Hz，短促衰减
+				// 基音：240Hz 三角波，柔和起落，400ms 结束
 				const osc = ac.createOscillator();
-				osc.type = 'sine';
-				osc.frequency.setValueAtTime(228, t);
-				osc.frequency.exponentialRampToValueAtTime(64, t + 0.16);
+				osc.type = 'triangle';
+				osc.frequency.setValueAtTime(240, t);
+				osc.frequency.linearRampToValueAtTime(205, t + 0.4);
 				const g = ac.createGain();
 				g.gain.setValueAtTime(0.0001, t);
-				g.gain.exponentialRampToValueAtTime(0.5, t + 0.008);
+				g.gain.exponentialRampToValueAtTime(0.22, t + 0.05);
+				g.gain.setValueAtTime(0.22, t + 0.22);
 				g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+
+				// 颤音 LFO：26Hz 调制音量，制造"呼噜噜"的颗粒感
+				const lfo = ac.createOscillator();
+				lfo.type = 'sine';
+				lfo.frequency.value = 26;
+				const lfoGain = ac.createGain();
+				lfoGain.gain.value = 0.12;
+				lfo.connect(lfoGain);
+				lfoGain.connect(g.gain);
+
 				osc.connect(g);
 				g.connect(ac.destination);
 				osc.start(t);
+				lfo.start(t);
 				osc.stop(t + 0.46);
-
-				// ② 木头脆响：几十毫秒的带通噪声，让「咚」带一点敲击感
-				const len = Math.floor(ac.sampleRate * 0.055);
-				const buf = ac.createBuffer(1, len, ac.sampleRate);
-				const data = buf.getChannelData(0);
-				for (let i = 0; i < len; i++) {
-					data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-				}
-				const src = ac.createBufferSource();
-				src.buffer = buf;
-				const bp = ac.createBiquadFilter();
-				bp.type = 'bandpass';
-				bp.frequency.value = 1350;
-				bp.Q.value = 0.9;
-				const ng = ac.createGain();
-				ng.gain.value = 0.26;
-				src.connect(bp);
-				bp.connect(ng);
-				ng.connect(ac.destination);
-				src.start(t);
+				lfo.stop(t + 0.46);
 			} catch (e) {
 				// 不支持或被拦截时静音，不影响计数
 			}
@@ -2269,10 +2311,10 @@ export default {
 	--liq-hl-btm: rgba(255, 255, 255, 0.10);
 	--liq-sheen: rgba(255, 255, 255, 0.24);
 
-	/* 木鱼：深木色 + 暗金高光，飘字用暖金带光晕 */
-	--muyu-ink: #FFD79A;
-	--muyu-glow: rgba(255, 196, 92, 0.85);
-	--muyu-halo: rgba(255, 190, 90, 0.30);
+	/* 摸小猫：粉色爱心 + 柔光，暗色底更显亮 */
+	--cat-ink: #FFB3D1;
+	--cat-glow: rgba(255, 130, 185, 0.85);
+	--cat-halo: rgba(255, 150, 200, 0.28);
 
 	/* 实时时钟：冷光字 + 轻微外发光 */
 	--clock-ink: #F2F4F8;
@@ -2322,10 +2364,10 @@ export default {
 	--liq-hl-btm: rgba(255, 255, 255, 0.50);
 	--liq-sheen: rgba(198, 216, 255, 0.55);
 
-	/* 浅色下飘字改用深琥珀，避免金粉在白底上看不清 */
-	--muyu-ink: #B4691A;
-	--muyu-glow: rgba(255, 174, 66, 0.55);
-	--muyu-halo: rgba(255, 186, 96, 0.28);
+	/* 浅色下爱心改用深玫红，避免粉色在白底上看不清 */
+	--cat-ink: #E5487F;
+	--cat-glow: rgba(255, 105, 170, 0.45);
+	--cat-halo: rgba(255, 140, 190, 0.24);
 
 	--clock-ink: #0B0D12;
 	--clock-glow: rgba(10, 132, 255, 0.30);
@@ -3487,218 +3529,172 @@ export default {
 	color: var(--btn-txt);
 }
 
-/* ---------- 敲木鱼：纯 CSS 画木鱼 ---------- */
-.muyu-stage {
+/* ---------- 摸小猫：实拍照片 + 花色切换 + 爱心动画 ---------- */
+.cat-stage {
 	position: relative;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	width: 100%;
-	height: 400rpx;
+	height: 430rpx;
 }
 
-/* 敲击瞬间从木鱼身后荡开的一圈暖光 */
-.muyu-halo {
+/* 左上角色选择器：毛玻璃小胶囊 */
+.cat-coatbar {
+	position: relative;
+	z-index: 3;
+	display: flex;
+	align-items: center;
+	align-self: flex-start;
+	height: 54rpx;
+	padding: 0 16rpx;
+	margin-bottom: 6rpx;
+	border-radius: 999rpx;
+	background-color: rgba(255, 255, 255, 0.5);
+	border: 1rpx solid var(--glass-bd);
+	-webkit-backdrop-filter: blur(16px) saturate(190%);
+	backdrop-filter: blur(16px) saturate(190%);
+	box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.8), 0 3rpx 12rpx rgba(90, 80, 140, 0.10);
+}
+
+.cat-coat-label {
+	font-size: 20rpx;
+	color: var(--text-dim);
+	letter-spacing: 1rpx;
+	margin-right: 12rpx;
+}
+
+.cat-coat-dots {
+	display: flex;
+	align-items: center;
+	gap: 10rpx;
+}
+
+.cat-coat-dot {
+	width: 30rpx;
+	height: 30rpx;
+	border-radius: 50%;
+	box-sizing: border-box;
+	border: 3rpx solid rgba(255, 255, 255, 0.85);
+	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.18);
+	transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+.cat-dot-orange  { background-image: linear-gradient(145deg, #FFC078 0%, #F08C3C 100%); }
+.cat-dot-siamese { background-image: linear-gradient(145deg, #E8D5B7 0%, #5A4638 100%); }
+.cat-dot-calico  { background-image: linear-gradient(135deg, #FFFFFF 0%, #F5A65B 50%, #4A4038 100%); }
+.cat-dot-cow     { background-image: linear-gradient(145deg, #FFFFFF 0%, #2B2B30 100%); }
+
+.cat-dot-on {
+	transform: scale(1.28);
+	box-shadow: 0 0 0 3rpx var(--cat-ink), 0 3rpx 10rpx rgba(0, 0, 0, 0.24);
+}
+
+.cat-coat-name {
+	font-size: 20rpx;
+	font-weight: 600;
+	color: var(--cat-ink);
+	letter-spacing: 1rpx;
+	margin-left: 14rpx;
+	min-width: 76rpx;
+}
+
+/* 抚摸瞬间从猫头身后荡开的柔光圈 */
+.cat-halo {
 	position: absolute;
-	top: 36%;
+	top: 48%;
 	left: 50%;
 	width: 380rpx;
 	height: 380rpx;
 	border-radius: 50%;
-	background-image: radial-gradient(circle, var(--muyu-halo) 0%, rgba(255, 255, 255, 0) 66%);
+	background-image: radial-gradient(circle, var(--cat-halo) 0%, rgba(255, 255, 255, 0) 66%);
 	opacity: 0;
 	transform: translate(-50%, -50%) scale(0.72);
 	transition: opacity 0.4s ease, transform 0.4s ease;
 	pointer-events: none;
 }
 
-.muyu-halo-on {
+.cat-halo-on {
 	opacity: 1;
-	transform: translate(-50%, -50%) scale(1.08);
+	transform: translate(-50%, -50%) scale(1.06);
 	transition: opacity 0.08s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.muyu-wrap {
+/* 猫头照片：四角柔和遮罩，融入毛玻璃背景 */
+.cat-photo {
 	position: relative;
-	width: 300rpx;
-	height: 240rpx;
-	transform-origin: 50% 74%;
-	will-change: transform;
-}
-
-/* 点击反馈：先被按扁，再弹过头，最后回稳 */
-.muyu-hit {
-	animation: muyu-bounce 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes muyu-bounce {
-	0% {
-		transform: scale(1) translateY(0);
-	}
-	18% {
-		transform: scale(0.9, 0.86) translateY(10rpx);
-	}
-	52% {
-		transform: scale(1.05, 1.03) translateY(-4rpx);
-	}
-	76% {
-		transform: scale(0.985, 0.99) translateY(1rpx);
-	}
-	100% {
-		transform: scale(1) translateY(0);
-	}
-}
-
-/* 鱼身：椭圆 + 上窄下宽的轮廓，深木色径向渐变打光 */
-.muyu-body {
-	position: absolute;
-	left: 50%;
-	bottom: 0;
 	z-index: 2;
-	width: 244rpx;
-	height: 196rpx;
-	margin-left: -122rpx;
-	border-radius: 50% 50% 47% 47% / 58% 58% 42% 42%;
-	background-image: radial-gradient(120% 118% at 34% 20%, #B9814E 0%, #8A5527 34%, #5C3413 68%, #341C08 100%);
-	box-shadow: 0 22rpx 44rpx rgba(0, 0, 0, 0.38), inset 0 -12rpx 24rpx rgba(0, 0, 0, 0.42),
-		inset 0 6rpx 14rpx rgba(255, 255, 255, 0.14);
-	overflow: hidden;
-}
-
-/* 顶部开口 */
-.muyu-slit {
-	position: absolute;
-	top: 9%;
-	left: 50%;
-	width: 124rpx;
-	height: 30rpx;
-	margin-left: -62rpx;
-	border-radius: 50%;
-	background-image: linear-gradient(180deg, #1E0F04 0%, #3A1F08 68%, rgba(58, 31, 8, 0) 100%);
-	box-shadow: inset 0 3rpx 5rpx rgba(0, 0, 0, 0.85), 0 2rpx 0 rgba(255, 208, 158, 0.22);
-}
-
-/* 木纹 */
-.muyu-grain {
-	position: absolute;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	left: 0;
-	opacity: 0.55;
-	background-image: repeating-linear-gradient(
-			102deg,
-			rgba(255, 255, 255, 0.05) 0,
-			rgba(255, 255, 255, 0.05) 2rpx,
-			rgba(0, 0, 0, 0.06) 2rpx,
-			rgba(0, 0, 0, 0.06) 6rpx
-		),
-		repeating-linear-gradient(
-			94deg,
-			rgba(0, 0, 0, 0.12) 0,
-			rgba(0, 0, 0, 0.12) 1rpx,
-			rgba(0, 0, 0, 0) 1rpx,
-			rgba(0, 0, 0, 0) 15rpx
-		);
-}
-
-/* 裹在木鱼外面的一层液态玻璃高光 */
-.muyu-gloss {
-	position: absolute;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	left: 0;
-	border-radius: inherit;
-	background-image: linear-gradient(
-			146deg,
-			rgba(255, 255, 255, 0.44) 0%,
-			rgba(255, 255, 255, 0.12) 26%,
-			rgba(255, 255, 255, 0) 54%
-		),
-		radial-gradient(58% 42% at 26% 12%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 100%);
-	box-shadow: inset 0 2rpx 0 rgba(255, 255, 255, 0.4), inset 0 -2rpx 0 rgba(0, 0, 0, 0.32);
+	display: block;
+	width: 340rpx;
+	height: 340rpx;
+	border-radius: 46%;
+	object-fit: cover;
+	filter: drop-shadow(0 16rpx 26rpx rgba(60, 50, 90, 0.22));
+	-webkit-mask-image: radial-gradient(circle at 50% 46%, #000 0%, #000 62%, rgba(0, 0, 0, 0) 78%);
+	mask-image: radial-gradient(circle at 50% 46%, #000 0%, #000 62%, rgba(0, 0, 0, 0) 78%);
+	transform-origin: 50% 82%;
+	will-change: transform;
 	pointer-events: none;
 }
 
-/* 鱼尾小柄 */
-.muyu-tail {
+/* 被摸：整个猫头缩一下再弹回 */
+.cat-patted {
+	animation: cat-squish 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes cat-squish {
+	0%   { transform: scale(1) translateY(0); }
+	20%  { transform: scale(1.06, 0.9) translateY(12rpx); }
+	55%  { transform: scale(0.95, 1.06) translateY(-6rpx); }
+	78%  { transform: scale(1.02, 0.98) translateY(2rpx); }
+	100% { transform: scale(1) translateY(0); }
+}
+
+/* ---------- 爱心粒子：向上飘 + 左右摆 + 旋转 + 淡出 ---------- */
+.cat-heart {
 	position: absolute;
-	right: 4rpx;
-	bottom: 40rpx;
-	z-index: 1;
-	width: 96rpx;
-	height: 48rpx;
-	border-radius: 50% 40% 40% 50%;
-	background-image: radial-gradient(120% 120% at 70% 38%, #8B5626 0%, #5A3313 58%, #341C08 100%);
-	transform: rotate(-16deg);
-	box-shadow: inset 0 2rpx 0 rgba(255, 255, 255, 0.16), 0 10rpx 20rpx rgba(0, 0, 0, 0.26);
+	z-index: 5;
+	background-image: linear-gradient(150deg, #FF9EC4 0%, #FF5E9C 55%, #E5347C 100%);
+	clip-path: polygon(50% 100%, 8% 56%, 0 32%, 4% 12%, 22% 2%, 38% 6%, 50% 20%, 62% 6%, 78% 2%, 96% 12%, 100% 32%, 92% 56%);
+	-webkit-clip-path: polygon(50% 100%, 8% 56%, 0 32%, 4% 12%, 22% 2%, 38% 6%, 50% 20%, 62% 6%, 78% 2%, 96% 12%, 100% 32%, 92% 56%);
+	filter: drop-shadow(0 0 10rpx var(--cat-glow));
+	opacity: 0;
+	pointer-events: none;
+	animation: cat-heart-float 1.5s cubic-bezier(0.22, 0.7, 0.3, 1) forwards;
+	will-change: transform, opacity;
 }
 
-/* 木槌：歇着时斜靠在右上方，敲下去时头部落到鱼身上 */
-.muyu-stick {
-	position: absolute;
-	top: -34rpx;
-	right: 34rpx;
-	z-index: 3;
-	width: 24rpx;
-	height: 150rpx;
-	transform-origin: 50% 100%;
-	transform: rotate(-32deg);
-}
-
-.muyu-stick-swing {
-	animation: muyu-swing 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes muyu-swing {
+@keyframes cat-heart-float {
 	0% {
-		transform: rotate(-32deg);
+		opacity: 0;
+		transform: translate(-50%, 20rpx) scale(0.4) rotate(var(--hrot, 0deg));
 	}
-	16% {
-		transform: rotate(-52deg);
+	18% {
+		opacity: 1;
+		transform: translate(-50%, -10rpx) scale(1.1) rotate(var(--hrot, 0deg));
 	}
-	56% {
-		transform: rotate(-28deg);
+	60% {
+		opacity: 1;
+		transform: translate(calc(-50% + 16rpx), -110rpx) scale(1) rotate(calc(var(--hrot, 0deg) + 12deg));
 	}
 	100% {
-		transform: rotate(-32deg);
+		opacity: 0;
+		transform: translate(calc(-50% - 12rpx), -230rpx) scale(1.15) rotate(calc(var(--hrot, 0deg) - 10deg));
 	}
 }
 
-.muyu-stick-bar {
-	position: absolute;
-	left: 50%;
-	bottom: 0;
-	width: 14rpx;
-	height: 130rpx;
-	margin-left: -7rpx;
-	border-radius: 999rpx;
-	background-image: linear-gradient(90deg, #3E2209 0%, #8C5828 46%, #3B2009 100%);
-}
-
-.muyu-stick-head {
-	position: absolute;
-	top: 0;
-	left: 50%;
-	width: 58rpx;
-	height: 58rpx;
-	margin-left: -29rpx;
-	border-radius: 50%;
-	background-image: radial-gradient(circle at 34% 28%, #C08A55 0%, #7A4A22 56%, #3B2009 100%);
-	box-shadow: 0 8rpx 18rpx rgba(0, 0, 0, 0.35), inset 0 2rpx 0 rgba(255, 255, 255, 0.3);
-}
-
-.muyu-hint {
-	margin-top: 28rpx;
+.cat-hint {
+	position: relative;
+	z-index: 3;
+	margin-top: 24rpx;
 	font-size: 22rpx;
 	letter-spacing: 1rpx;
 	color: var(--text-faint);
 	transition: color 0.45s;
 }
 
-.muyu-count {
+.cat-count {
 	margin-top: 10rpx;
 	font-size: 22rpx;
 	letter-spacing: 1rpx;
@@ -3706,40 +3702,10 @@ export default {
 	transition: color 0.45s;
 }
 
-.muyu-num {
+.cat-num {
 	font-size: 27rpx;
 	font-weight: 700;
-	color: var(--muyu-ink);
-}
-
-/* 飘字：暖金 + 光晕 */
-.muyu-pop {
-	position: absolute;
-	top: 34%;
-	transform: translate(-50%, 0);
-	font-size: 26rpx;
-	font-weight: 700;
-	letter-spacing: 1rpx;
-	white-space: nowrap;
-	color: var(--muyu-ink);
-	text-shadow: 0 0 10rpx var(--muyu-glow), 0 0 26rpx var(--muyu-glow), 0 1rpx 2rpx rgba(0, 0, 0, 0.32);
-	pointer-events: none;
-	animation: muyu-pop 1.1s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
-}
-
-@keyframes muyu-pop {
-	0% {
-		opacity: 0;
-		transform: translate(-50%, 12rpx) scale(0.8);
-	}
-	18% {
-		opacity: 1;
-		transform: translate(-50%, -18rpx) scale(1);
-	}
-	100% {
-		opacity: 0;
-		transform: translate(-50%, -160rpx) scale(1.06);
-	}
+	color: var(--cat-ink);
 }
 
 /* 抽签 */

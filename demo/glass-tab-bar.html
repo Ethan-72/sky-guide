@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>液态玻璃胶囊 Tab · 拖拽手感 Demo</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #e9e6f2;
+    overflow: hidden;
+  }
+
+  /* ---------- 手机外框 ---------- */
+  .phone {
+    position: relative;
+    width: 390px; height: 844px;
+    border-radius: 44px;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 70% at 8% 0%, #f7c9e6 0%, rgba(247,201,230,0) 55%),
+      radial-gradient(110% 70% at 100% 8%, #cfe6fb 0%, rgba(207,230,251,0) 60%),
+      radial-gradient(90% 60% at 50% 100%, #ffe9c9 0%, rgba(255,233,201,0) 62%),
+      linear-gradient(170deg, #f6edfb 0%, #eef3fe 48%, #fbf0f6 100%);
+    box-shadow: 0 30px 80px rgba(70, 60, 120, 0.28), 0 2px 0 rgba(255,255,255,.7) inset;
+    padding: 0 20px;
+  }
+
+  .status {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 52px; font-size: 13px; font-weight: 600; color: #2b2b33; padding: 0 4px;
+  }
+  .status .icons { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+
+  h1 { font-size: 34px; letter-spacing: 2px; margin: 14px 0 22px; color: #17171d; font-weight: 700; }
+
+  /* ---------- 分段控件（框架注入 / 进程注入） ---------- */
+  .seg {
+    position: relative; display: flex; height: 52px; border-radius: 999px; padding: 5px;
+    background: rgba(255,255,255,.5);
+    border: 1px solid rgba(255,255,255,.75);
+    backdrop-filter: blur(22px) saturate(200%);
+    -webkit-backdrop-filter: blur(22px) saturate(200%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 6px 18px rgba(90,80,150,.10);
+    margin-bottom: 26px;
+  }
+  .seg .thumb {
+    position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / 2);
+    border-radius: 999px;
+    background: linear-gradient(160deg, #ffffff 0%, rgba(255,255,255,.9) 100%);
+    box-shadow: 0 4px 14px rgba(90,80,150,.16), inset 0 1px 0 #fff;
+    transform: translate3d(100%, 0, 0);
+    transition: transform .42s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .seg .cell { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; color: rgba(60,60,90,.7); font-weight: 500; }
+  .seg .cell.on { color: #1d6bff; font-weight: 700; }
+
+  /* ---------- 液态玻璃胶囊 Tab（核心） ---------- */
+  .glt {
+    position: relative;
+    height: 62px;
+    padding: 6px;
+    border-radius: 999px;
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+    background: rgba(255,255,255,.55);
+    border: 1px solid rgba(255,255,255,.72);
+    backdrop-filter: blur(24px) saturate(210%);
+    -webkit-backdrop-filter: blur(24px) saturate(210%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.3), 0 8px 24px rgba(80,70,140,.12);
+    touch-action: pan-y;
+    user-select: none;
+    cursor: grab;
+  }
+  .glt.dragging { cursor: grabbing; }
+
+  .glt .ind {
+    position: absolute; top: 6px; bottom: 6px; left: 6px;
+    z-index: 0; pointer-events: none; will-change: transform;
+  }
+  .glt .ind-inner {
+    position: absolute; top: 0; bottom: 0; left: -3px; right: -3px;
+    border-radius: 999px;
+    background: linear-gradient(160deg, #fff 0%, rgba(255,255,255,.86) 100%);
+    box-shadow: 0 6px 18px rgba(90,80,150,.18), 0 1px 2px rgba(90,80,150,.10), inset 0 1px 0 rgba(255,255,255,.95);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    transform: scale(var(--sx,1), var(--sy,1));
+    transform-origin: 50% 50%;
+    will-change: transform;
+    overflow: hidden;
+  }
+  .glt .ind-inner::after {
+    content: ''; position: absolute; top: -60%; left: 50%; width: 160%; height: 220%;
+    transform: translateX(calc(-50% + var(--lead, 0%)));
+    background: radial-gradient(closest-side, rgba(255,255,255,.95) 0%, rgba(255,255,255,0) 100%);
+  }
+
+  .glt .item {
+    position: relative; z-index: 1; flex: 1; display: flex; align-items: center; justify-content: center;
+    min-width: 0;
+  }
+  .glt .label { position: relative; display: flex; align-items: center; justify-content: center; }
+  .glt .txt { font-size: 15px; letter-spacing: .5px; white-space: nowrap; line-height: 1.2; }
+  .glt .txt-off { color: rgba(60,60,90,.72); font-weight: 500; }
+  .glt .onwrap {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .glt .txt-on { color: #1d6bff; font-weight: 700; will-change: opacity, transform; }
+
+  /* ---------- 内容卡片（跟着 Tab 切） ---------- */
+  .card {
+    margin-top: 22px;
+    border-radius: 26px;
+    padding: 20px 18px;
+    background: rgba(255,255,255,.42);
+    border: 1px solid rgba(255,255,255,.7);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 8px 26px rgba(90,80,150,.10);
+  }
+  .card h3 { margin: 0 0 8px; font-size: 17px; color: #1b1b22; font-weight: 700; }
+  .card p { margin: 0; font-size: 13px; line-height: 1.7; color: rgba(50,50,70,.72); }
+  .card .tag { display: inline-block; margin-top: 12px; padding: 4px 12px; border-radius: 999px; font-size: 11px;
+    color: #1d6bff; background: rgba(29,107,255,.1); border: 1px solid rgba(29,107,255,.18); }
+
+  .row { display: flex; gap: 12px; margin-top: 14px; }
+  .mini {
+    flex: 1; display: flex; align-items: center; gap: 10px; padding: 14px;
+    border-radius: 20px; background: rgba(255,255,255,.42);
+    border: 1px solid rgba(255,255,255,.7);
+    backdrop-filter: blur(20px) saturate(200%);
+    -webkit-backdrop-filter: blur(20px) saturate(200%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 6px 18px rgba(90,80,150,.08);
+  }
+  .mini .dot { width: 34px; height: 34px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: #fff; background: linear-gradient(150deg, #8fb8ff, #5f8dff); box-shadow: 0 4px 10px rgba(95,141,255,.4); }
+  .mini .t { font-size: 12px; color: rgba(50,50,70,.68); }
+  .mini .v { font-size: 14px; color: #1b1b22; font-weight: 600; margin-top: 2px; }
+
+  .cta {
+    margin-top: 20px; height: 56px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; color: #1d6bff; letter-spacing: 1px;
+    background: rgba(255,255,255,.5);
+    border: 1px solid rgba(255,255,255,.8);
+    backdrop-filter: blur(22px) saturate(200%);
+    -webkit-backdrop-filter: blur(22px) saturate(200%);
+    box-shadow: inset 0 1px 0 #fff, 0 8px 24px rgba(90,80,150,.10);
+  }
+
+  /* ---------- 底部导航 ---------- */
+  .nav {
+    position: absolute; left: 20px; right: 20px; bottom: 22px; height: 74px;
+    display: flex; border-radius: 30px;
+    background: rgba(255,255,255,.5);
+    border: 1px solid rgba(255,255,255,.8);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+    box-shadow: inset 0 1px 0 #fff, 0 8px 24px rgba(90,80,150,.12);
+    overflow: hidden;
+  }
+  .nav .n { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: rgba(50,50,70,.62); }
+  .nav .n.on { color: #1d6bff; font-weight: 700; }
+  .nav .n .i { font-size: 18px; }
+  .nav .n.on .i { filter: drop-shadow(0 2px 6px rgba(29,107,255,.35)); }
+
+  /* ---------- 实时数值读数 ---------- */
+  .hud {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 106px;
+    font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: rgba(60,60,90,.55);
+    background: rgba(255,255,255,.45);
+    border: 1px solid rgba(255,255,255,.7);
+    border-radius: 10px;
+    padding: 6px 10px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    white-space: pre;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status">
+    <span>晚上9:22</span>
+    <span class="icons">▮▮▮ ⌁ 86%</span>
+  </div>
+
+  <h1>注入</h1>
+
+  <!-- 分段控件：纯点击 + CSS 弹簧曲线 -->
+  <div class="seg" id="seg">
+    <div class="thumb"></div>
+    <div class="cell on">框架注入</div>
+    <div class="cell">进程注入</div>
+  </div>
+
+  <!-- 核心组件 -->
+  <div class="glt" id="glt">
+    <div class="ind" id="ind"><div class="ind-inner" id="inner"></div></div>
+    <div class="item"><div class="label"><span class="txt txt-off">honffx</span><span class="onwrap"><span class="txt txt-on">honffx</span></span></div></div>
+    <div class="item"><div class="label"><span class="txt txt-off">Terminal</span><span class="onwrap"><span class="txt txt-on">Terminal</span></span></div></div>
+    <div class="item"><div class="label"><span class="txt txt-off">czr</span><span class="onwrap"><span class="txt txt-on">czr</span></span></div></div>
+  </div>
+
+  <div class="hud" id="hud">idx 0.00  v 0.00</div>
+
+  <div class="card" id="card">
+    <h3>进程准备</h3>
+    <p>执行时检查运行条件。此模式需要两款应用具有相同的用户标识，并允许访问目标目录与附加进程。</p>
+    <span class="tag" id="cardTag">honffx</span>
+  </div>
+
+  <div class="row">
+    <div class="mini"><div class="dot">▣</div><div><div class="t">本地模块</div><div class="v">已就绪 · 0.32</div></div></div>
+    <div class="mini"><div class="dot" style="background:linear-gradient(150deg,#b9a4ff,#8a6bff)">◈</div><div><div class="t">框架版本</div><div class="v">v12.4</div></div></div>
+  </div>
+
+  <div class="cta">⚡ 一键注入</div>
+
+  <div class="nav">
+    <div class="n"><span class="i">⤓</span><span>更新</span></div>
+    <div class="n on"><span class="i">◈</span><span>注入</span></div>
+    <div class="n"><span class="i">▤</span><span>卡密</span></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   液态玻璃胶囊 Tab —— 拖拽 / 吸附 / 弹簧
+   这套数值和 Vue 组件里的完全一致，方便你直接对着调手感
+   ============================================================ */
+const K = 380;          // 弹簧刚度：越大越"急"
+const C = 24;           // 阻尼：越小越"Q弹"（0.62 阻尼比，会轻微过冲）
+const RUBBER = 0.32;    // 越界阻尼：滑出边界后只保留 32% 位移
+const FLICK = 0.12;     // 速度投影系数：松手时按 v*0.12 格继续往前冲
+const SLOP = 5;         // 位移 < 5px 视为点击
+
+const track = document.getElementById('glt');
+const ind = document.getElementById('ind');
+const inner = document.getElementById('inner');
+const ons = [...document.querySelectorAll('.txt-on')];
+const hud = document.getElementById('hud');
+const cardTag = document.getElementById('cardTag');
+const card = document.getElementById('card');
+
+const N = 3;
+const PAD = 6;
+let idx = 0;            // 当前格位（连续值，拖动时是 1.37 这种小数）
+let itemW = 100;        // 一格多少 px
+let drag = null;        // 手势状态
+let spring = null;      // 弹簧动画句柄
+
+/* ---------- 尺寸测量 ---------- */
+function measure() {
+  const w = track.getBoundingClientRect().width;
+  itemW = (w - PAD * 2) / N;
+  ind.style.width = itemW + 'px';
+  render(idx);
+}
+window.addEventListener('resize', measure);
+
+/* ---------- 渲染：把数值翻译成样式 ---------- */
+function render(i, stretch = 0, lead = 0) {
+  idx = i;
+  // ① 位置：一格 = 自身宽度 100%
+  ind.style.transform = `translate3d(${i * 100}%, 0, 0)`;
+  // ② 拉伸：沿 x 拉长、y 收薄，模拟液体被带着走
+  inner.style.setProperty('--sx', (1 + stretch).toFixed(4));
+  inner.style.setProperty('--sy', (1 - stretch * 0.4).toFixed(4));
+  // ③ 高光流动
+  inner.style.setProperty('--lead', lead.toFixed(1) + '%');
+  // ④ 文字联动：距离 0 → 完全激活，距离 ≥1 → 完全熄灭
+  for (let k = 0; k < N; k++) {
+    const d = Math.abs(i - k);
+    const t = d >= 1 ? 0 : 1 - d;
+    ons[k].style.opacity = t.toFixed(3);
+    ons[k].style.transform = `scale(${(0.96 + 0.04 * t).toFixed(3)})`;
+  }
+  hud.textContent = `idx ${i.toFixed(2)}  v ${(spring ? spring.v : (drag ? drag.v : 0)).toFixed(2)}`;
+}
+
+/* ---------- 弹簧积分 ---------- */
+function stopSpring() {
+  if (spring && spring.raf) cancelAnimationFrame(spring.raf);
+  spring = null;
+}
+
+function snapTo(target, v0 = 0) {
+  stopSpring();
+  const s = { x: idx, v: v0, target, last: 0, raf: 0 };
+  spring = s;
+  commit(target);
+
+  const step = (now) => {
+    if (!s.last) s.last = now;
+    let dt = (now - s.last) / 1000;
+    s.last = now;
+    if (!(dt > 0)) dt = 1 / 60;
+    if (dt > 0.032) dt = 0.032;         // 掉帧保护
+
+    const a = -K * (s.x - s.target) - C * s.v;
+    s.v += a * dt;
+    s.x += s.v * dt;
+
+    const stretch = Math.min(Math.abs(s.v) * 0.03, 0.16);
+    const lead = Math.max(-14, Math.min(14, s.v * 6));
+    render(s.x, stretch, lead);
+
+    if (Math.abs(s.v) < 0.02 && Math.abs(s.x - s.target) < 0.001) {
+      render(s.target, 0, 0);
+      s.raf = 0;
+      return;
+    }
+    s.raf = requestAnimationFrame(step);
+  };
+  s.raf = requestAnimationFrame(step);
+}
+
+let lastCommit = 0;
+function commit(target) {
+  if (target === lastCommit) return;
+  lastCommit = target;
+  cardTag.textContent = ['honffx', 'Terminal', 'czr'][target];
+  card.style.opacity = '0.55';
+  card.style.transform = 'translateY(2px)';
+  requestAnimationFrame(() => {
+    card.style.transition = 'opacity .3s ease, transform .3s ease';
+    card.style.opacity = '1';
+    card.style.transform = 'translateY(0)';
+  });
+}
+
+/* ---------- 手势 ---------- */
+function point(e) {
+  const t = e.touches ? e.touches[0] : e;
+  return t.clientX != null ? t.clientX : t.pageX;
+}
+
+track.addEventListener('pointerdown', (e) => {
+  stopSpring();                                  // 抓住飞行中的块：立刻接管
+  track.classList.add('dragging');
+  drag = {
+    x0: point(e),
+    i0: idx,
+    t0: performance.now(),
+    v: 0,
+    moved: false
+  };
+});
+
+/* 手势监听挂在 window 上：手指滑出胶囊也继续跟手，且不干扰子元素的 click */
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = point(e) - drag.x0;
+  if (Math.abs(dx) > SLOP) drag.moved = true;
+
+  // ① px → 格
+  const raw = drag.i0 + dx / itemW;
+  // ② 边界阻尼
+  const max = N - 1;
+  const i = raw < 0 ? raw * RUBBER : raw > max ? max + (raw - max) * RUBBER : raw;
+  // ③ 速度（格/秒），低通一下更稳
+  const dt = (performance.now() - drag.t0) / 1000;
+  const v = dt > 0.016 ? (i - drag.i0) / dt : 0;
+  drag.v = drag.v * 0.72 + v * 0.28;
+
+  const stretch = Math.min(Math.abs(drag.v) * 0.03, 0.16);
+  const lead = Math.max(-14, Math.min(14, drag.v * 6));
+  render(i, stretch, lead);
+});
+
+function endDrag() {
+  if (!drag) return;
+  const moved = drag.moved;
+  const v = Math.max(-9, Math.min(9, drag.v));
+  track.classList.remove('dragging');
+  drag = null;
+  if (!moved) return;   // 没动 → 交给 click
+
+  // 惯性投影 + 最近一格
+  const projected = idx + v * FLICK;
+  const target = Math.max(0, Math.min(N - 1, Math.round(projected)));
+  snapTo(target, v);    // 速度作为初始速度 → 甩出去再吸住的 Q 弹感
+}
+track.addEventListener('pointerup', endDrag);
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+
+/* 点击：轻点某个 Tab */
+track.querySelectorAll('.item').forEach((el, i) => {
+  el.addEventListener('click', () => {
+    if (i === Math.round(idx)) return;
+    snapTo(i, 0);
+  });
+});
+
+/* ---------- 顶部分段控件（纯点击，演示弹簧曲线） ---------- */
+const seg = document.getElementById('seg');
+const cells = [...seg.querySelectorAll('.cell')];
+seg.addEventListener('click', (e) => {
+  const i = cells.indexOf(e.target.closest('.cell'));
+  if (i < 0) return;
+  seg.querySelector('.thumb').style.transform = `translate3d(${i * 100}%, 0, 0)`;
+  cells.forEach((c, k) => c.classList.toggle('on', k === i));
+});
+
+/* ---------- 启动 ---------- */
+measure();
+render(0, 0, 0);
+</script>
+</body>
+</html>
