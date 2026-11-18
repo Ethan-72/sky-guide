@@ -89,10 +89,6 @@
 				>
 					<view class="badge"><text class="badge-txt">{{ pad(index + 1) }}</text></view>
 					<text class="task-text">{{ item.text }}</text>
-					<!-- 该条任务对应的攻略小图（从四宫格里抠出来的一格） -->
-					<view class="task-thumb" v-if="hasShots && index < 4" :style="thumbBoxStyle(index)">
-						<image class="task-thumb-img" :src="posterUrl" mode="scaleToFill" :style="shotImgStyle(index)"></image>
-					</view>
 				</view>
 				<view class="task" v-if="isToday && loading">
 					<text class="task-text task-dim">正在读取数据…</text>
@@ -709,13 +705,13 @@ export default {
 			return (r.cw * w) / (r.ch * h);
 		},
 
-		// 弹层舞台尺寸：按格子比例把图装进屏幕（直接用 px，避免 aspect-ratio 兼容问题）
+		// 弹层舞台尺寸：按格子比例把图装进当前窗口（用 px，电脑/手机都按可视区算）
 		shotStageStyle() {
 			const ar = this.shotAspect || 1.9;
 			const vw = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 375;
 			const vh = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 667;
-			const maxW = vw * 0.86;
-			const maxH = vh * 0.46;
+			const maxW = Math.min(vw * 0.88, 560);
+			const maxH = Math.max(120, Math.min(vh * 0.52, vh - 240));
 			let w = maxW;
 			let h = w / ar;
 			if (h > maxH) {
@@ -1797,20 +1793,6 @@ export default {
 				height: (100 / r.ch).toFixed(2) + '%',
 				left: ((-r.cx * 100) / r.cw).toFixed(2) + '%',
 				top: ((-r.cy * 100) / r.ch).toFixed(2) + '%'
-			};
-		},
-
-		// 列表里的小图：高度固定，宽度按格子比例算（rpx 手动换算成 px，避免内联样式不识别）
-		thumbBoxStyle(i) {
-			const r = this.shotRects[i] || this.shotRects[0];
-			const w = this.posterW || 1200;
-			const h = this.posterH || 750;
-			const ar = (r.cw * w) / (r.ch * h);
-			const rpx = (typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 375) / 750;
-			const th = 74 * rpx; // 缩略图高度 74rpx
-			return {
-				width: Math.min(150 * rpx, th * ar).toFixed(1) + 'px',
-				height: th.toFixed(1) + 'px'
 			};
 		},
 
@@ -3039,9 +3021,11 @@ export default {
 	animation: content-fade-in 0.4s ease both;
 }
 
+/* 收尾必须回到 transform: none——只要残留 transform，
+   内部的 position:fixed 弹层就会以 .content 为定位基准，导致全屏弹层不居中 */
 @keyframes content-fade-in {
 	from { opacity: 0; transform: translateY(8rpx); }
-	to { opacity: 1; transform: translateY(0); }
+	to { opacity: 1; transform: none; }
 }
 
 /* ---------- 玻璃基类 ---------- */
@@ -3435,30 +3419,13 @@ export default {
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
 }
 
-/* ---------- 任务行缩略图：露出这一条对应的攻略格子 ---------- */
+/* ---------- 任务行点击态 ---------- */
 .task-tap {
 	transition: background-color 0.18s ease;
 }
 
 .task-tap:active {
 	background-color: rgba(127, 214, 255, 0.10);
-}
-
-.task-thumb {
-	position: relative;
-	flex-shrink: 0;
-	align-self: center;
-	overflow: hidden;
-	margin-left: 16rpx;
-	border-radius: 12rpx;
-	background-color: rgba(255, 255, 255, 0.06);
-	border: 1rpx solid var(--glass-bd);
-	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.14);
-}
-
-.task-thumb-img {
-	position: absolute;
-	display: block;
 }
 
 /* ---------- 单条任务大图（全屏弹层） ---------- */
@@ -3487,12 +3454,14 @@ export default {
 	visibility: visible;
 }
 
+/* 宽度交给内容决定（= 大图宽度），这样标题栏、按钮栏与图片左右对齐，
+   整块在遮罩里水平+垂直居中，电脑和手机都居中 */
 .shot-panel {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	width: 100%;
-	max-width: 640rpx;
+	width: auto;
+	max-width: 100%;
 	opacity: 0;
 	transform: scale(0.94);
 	transition: opacity 0.26s ease, transform 0.32s cubic-bezier(0.22, 1.2, 0.36, 1);
