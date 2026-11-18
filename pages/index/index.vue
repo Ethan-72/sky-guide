@@ -16,10 +16,16 @@
 				</view>
 
 				<view class="topbar-right">
-					<view class="seg" @click="toggleTheme" @longpress="resetThemeAuto">
+					<view class="seg"
+						@touchstart="onDragStart($event, 'seg')"
+						@touchmove.stop.prevent="onDragMove($event, 'seg')"
+						@touchend="onDragEnd($event, 'seg')"
+						@touchcancel="onDragEnd($event, 'seg')"
+						@click="onSegClick"
+						@longpress="resetThemeAuto">
 						<view class="liq-thumb seg-thumb" :style="segThumbStyle"></view>
-						<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'light' }">日</text></view>
-						<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'dark' }">夜</text></view>
+						<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'light' }" :style="segTxtStyle(0)">日</text></view>
+						<view class="seg-item"><text class="seg-txt" :class="{ 'seg-txt-on': theme === 'dark' }" :style="segTxtStyle(1)">夜</text></view>
 					</view>
 
 					<view class="refresh-btn" @click="reloadPage">
@@ -52,16 +58,20 @@
 
 			<!-- 日期切换：昨天 / 今天 / 明天 -->
 			<view class="daytabs-row">
-				<view class="daytabs">
+				<view class="daytabs"
+					@touchstart="onDragStart($event, 'day')"
+					@touchmove.stop.prevent="onDragMove($event, 'day')"
+					@touchend="onDragEnd($event, 'day')"
+					@touchcancel="onDragEnd($event, 'day')">
 					<view class="liq-thumb daytabs-thumb" :style="dayThumbStyle"></view>
-					<view class="daytab" @click="switchDay(-1)" @touchstart="switchDay(-1)">
-						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }">昨天</text>
+					<view class="daytab" @click="switchDay(-1)">
+						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }" :style="dayTxtStyle(-1)">昨天</text>
 					</view>
-					<view class="daytab" @click="switchDay(0)" @touchstart="switchDay(0)">
-						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 0 }">今天</text>
+					<view class="daytab" @click="switchDay(0)">
+						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 0 }" :style="dayTxtStyle(0)">今天</text>
 					</view>
-					<view class="daytab" @click="switchDay(1)" @touchstart="switchDay(1)">
-						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }">明天</text>
+					<view class="daytab" @click="switchDay(1)">
+						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === 1 }" :style="dayTxtStyle(1)">明天</text>
 					</view>
 				</view>
 			</view>
@@ -416,6 +426,8 @@ export default {
 			segIdx: 1, // 日=0 / 夜=1
 			segStretch: 0,
 			segLead: '0%',
+			daySettle: false, // 吸附阶段：给 thumb 加 CSS transition 兜底（rAF 被暂停时也能到位）
+			segSettle: false,
 
 			reloading: false,
 
@@ -598,12 +610,17 @@ export default {
 		/* -------- 滑块位移：把弹簧状态翻译成 CSS 变量 -------- */
 		/* 拉伸时横向变长、纵向变薄，像被手指带着走的一小团液体 */
 		dayThumbStyle() {
-			return this.thumbStyle(this.dayTabIdx, this.dayTabStretch, this.dayTabLead);
+			const st = this.thumbStyle(this.dayTabIdx, this.dayTabStretch, this.dayTabLead);
+			if (this.daySettle) st.transition = 'transform 0.42s cubic-bezier(0.22, 1.2, 0.36, 1)';
+			return st;
 		},
 
 		segThumbStyle() {
-			return this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
+			const st = this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
+			if (this.segSettle) st.transition = 'transform 0.42s cubic-bezier(0.22, 1.2, 0.36, 1)';
+			return st;
 		},
+
 
 		// 当前花色的猫头照片路径
 		catPhotoSrc() {
@@ -851,7 +868,7 @@ export default {
 			if (!st) return;
 			if (st.raf && st.target === target) return; // 已经在去同一格的路上
 			if (typeof requestAnimationFrame !== 'function') {
-				this.applySlide(kind, target, 0, '0%');
+				this.applySlide(kind, target, 0, '0%', true);
 				st.x = target;
 				return;
 			}
@@ -875,7 +892,7 @@ export default {
 				this.applySlide(kind, st.x, stretch, lead);
 
 				if (Math.abs(st.v) < 0.03 && Math.abs(st.x - st.target) < 0.0015) {
-					this.applySlide(kind, st.target, 0, '0%');
+					this.applySlide(kind, st.target, 0, '0%', true);
 					st.x = st.target;
 					st.v = 0;
 					st.raf = 0;
@@ -886,15 +903,17 @@ export default {
 			st.raf = requestAnimationFrame(step);
 		},
 
-		applySlide(kind, idx, stretch, lead) {
+		applySlide(kind, idx, stretch, lead, settle) {
 			if (kind === 'day') {
 				this.dayTabIdx = idx;
 				this.dayTabStretch = stretch;
 				this.dayTabLead = lead;
+				if (settle !== undefined) this.daySettle = settle;
 			} else {
 				this.segIdx = idx;
 				this.segStretch = stretch;
 				this.segLead = lead;
+				if (settle !== undefined) this.segSettle = settle;
 			}
 		},
 
@@ -906,6 +925,165 @@ export default {
 			}
 		},
 
+		/* ============ 跟手拖拽：按住滑块左右拖，实时跟手 + 松手 Q 弹吸附 ============ */
+		// 字数（day=3, seg=2）与当前 idx
+		tabMeta(kind) {
+			if (kind === 'day') return { n: 3, idx: this.dayOffset + 1 };
+			return { n: 2, idx: this.theme === 'dark' ? 1 : 0 };
+		},
+
+		// 文字联动样式（带参数的方法，必须放 methods 而不是 computed）
+		dayTxtStyle(offset) {
+			const i = offset + 1; // -1/0/1 → 0/1/2
+			return this.mixTxtStyle(this.tabActivity(this.dayTabIdx, i));
+		},
+		segTxtStyle(i) {
+			return this.mixTxtStyle(this.tabActivity(this.segIdx, i));
+		},
+
+		// 文字激活度：距离滑块越近越亮（0~1）
+		tabActivity(cur, i) {
+			const d = Math.abs(cur - i);
+			return d >= 1 ? 0 : 1 - d;
+		},
+
+		// 把激活度翻译成颜色/字重样式（连续过渡，不用 class 硬切）
+		mixTxtStyle(a) {
+			return {
+				opacity: String(0.5 + 0.5 * a),
+				'font-weight': a > 0.5 ? '600' : '400',
+				transform: `scale(${(0.94 + 0.06 * a).toFixed(3)})`
+			};
+		},
+
+		// 边界阻尼：越界只保留 32% 位移，拉得动但出不去
+		dampIdx(raw, n) {
+			if (raw < 0) return raw * 0.32;
+			if (raw > n - 1) return (n - 1) + (raw - (n - 1)) * 0.32;
+			return raw;
+		},
+
+		touchX(e) {
+			const t = e.touches && e.touches[0];
+			return t ? t.clientX : 0;
+		},
+
+		onDragStart(e, kind) {
+			const m = this.tabMeta(kind);
+			this.stopSpring(kind); // 抢过正在飞行的滑块
+			this.applySlide(kind, this[kind === 'day' ? 'dayTabIdx' : 'segIdx'], 0, '0%', false);
+			this._drag = {
+				kind,
+				x0: this.touchX(e),
+				i0: m.idx,
+				t0: Date.now(),
+				lastX: this.touchX(e),
+				lastT: Date.now(),
+				v: 0,
+				n: m.n,
+				moved: false,
+				targetEl: e.currentTarget
+			};
+		},
+
+		onDragMove(e, kind) {
+			const d = this._drag;
+			if (!d || d.kind !== kind) return;
+			const x = this.touchX(e);
+			const now = Date.now();
+			const dx = x - d.x0;
+
+			// 超过 6px 才算"拖"，避免轻微抖动误判
+			if (!d.moved && Math.abs(dx) < 6) return;
+			d.moved = true;
+
+			// 一格宽度 = 容器宽 / 格数（px 只在这里用于换算）
+			const w = (d.targetEl && d.targetEl.clientWidth ? d.targetEl.clientWidth : 300) / d.n;
+			const raw = d.i0 + dx / w;
+			const idx = this.dampIdx(raw, d.n);
+
+			// 速度（格/秒），用最近一段位移估算
+			const dt = Math.max(now - d.lastT, 8);
+			const v = (x - d.lastX) / w / (dt / 1000);
+			d.v = d.v * 0.7 + v * 0.3; // 平滑
+			d.lastX = x; d.lastT = now;
+
+			// 实时跟手：直接写 idx，不走弹簧
+			const stretch = Math.min(Math.abs(d.v) * 0.02, 0.14);
+			const lead = Math.max(-16, Math.min(16, d.v * 4)).toFixed(1) + '%';
+			this.applySlide(kind, idx, stretch, lead);
+		},
+
+		onDragEnd(e, kind) {
+			const d = this._drag;
+			if (!d || d.kind !== kind) return;
+			this._drag = null;
+			if (!d.moved) return; // 纯点击，交给 click 处理
+
+			// 松手：速度投影 + 取整 → 吸附目标格
+			const cur = (kind === 'day' ? this.dayTabIdx : this.segIdx);
+			const v = Math.max(-8, Math.min(8, d.v));
+			const projected = cur + v * 0.12;          // 惯性投影，轻扫可翻格
+			const target = Math.max(0, Math.min(d.n - 1, Math.round(projected)));
+
+			// 吸附到目标格：CSS cubic-bezier 做 Q 弹（比 rAF 更稳，rAF 在部分场景被暂停）
+			const st = this._spring[kind];
+			st.x = target; st.v = 0; st.target = target;
+			if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
+			this.applySlide(kind, target, 0, '0%', true);
+
+			// 触发业务：只在目标格变化时切一次
+			if (kind === 'day') {
+				const offset = target - 1;
+				if (offset !== this.dayOffset) this.switchDay(offset, true);
+			} else {
+				const nextTheme = target === 1 ? 'dark' : 'light';
+				if (nextTheme !== this.theme) this.toggleTheme(true);
+			}
+			this._suppressClick = true; // 抑制随后到来的 click，避免重复切换
+			setTimeout(() => { this._suppressClick = false; }, 350);
+		},
+
+		// 带初速的弹簧吸附（复用 slideTo 的积分，但先注入初速）
+		_snapWithVelocity(kind, target, v0) {
+			const st = this._spring && this._spring[kind];
+			if (!st) return;
+			st.target = target;
+			st.v = v0;
+			if (typeof requestAnimationFrame !== 'function') {
+				this.applySlide(kind, target, 0, '0%', true);
+				st.x = target; st.v = 0;
+				return;
+			}
+			if (st.raf) cancelAnimationFrame(st.raf);
+			let last = 0;
+			const step = now => {
+				if (!last) last = now;
+				let dt = (now - last) / 1000; last = now;
+				if (!(dt > 0)) dt = 1 / 60;
+				if (dt > 0.04) dt = 0.04;
+				const accel = -420 * (st.x - st.target) - 27 * st.v;
+				st.v += accel * dt;
+				st.x += st.v * dt;
+				const stretch = Math.min(Math.abs(st.v) * 0.026, 0.14);
+				const lead = Math.max(-16, Math.min(16, st.v * 5)).toFixed(1) + '%';
+				this.applySlide(kind, st.x, stretch, lead);
+				if (Math.abs(st.v) < 0.03 && Math.abs(st.x - st.target) < 0.0015) {
+					this.applySlide(kind, st.target, 0, '0%', true);
+					st.x = st.target; st.v = 0; st.raf = 0;
+					return;
+				}
+				st.raf = requestAnimationFrame(step);
+			};
+			st.raf = requestAnimationFrame(step);
+		},
+
+		// seg 点击：拖完的 350ms 内抑制（避免拖拽后又触发 click 切回去）
+		onSegClick() {
+			if (this._suppressClick) return;
+			this.toggleTheme();
+		},
+
 		/* ---------------- 日期切换与本地存档 ---------------- */
 		/* 取相对今天偏移 N 天的日期字符串：0=今天，-1=昨天，1=明天 */
 		dayText(offset) {
@@ -914,10 +1092,9 @@ export default {
 			return `${d.getFullYear()}-${this.pad(d.getMonth() + 1)}-${this.pad(d.getDate())}`;
 		},
 
-		switchDay(offset) {
-			// touchstart 与 click 都会触发，重复调用直接忽略
+		switchDay(offset, fromDrag) {
 			if (this.dayOffset === offset) return;
-			this.slideTo('day', offset + 1); // -1/0/1 → 0/1/2
+			if (!fromDrag) this.slideTo('day', offset + 1); // 纯点击才走弹簧；拖拽时吸附弹簧已接管
 			this.dayOffset = offset;
 			if (offset === -1) this.loadArchive();
 			if (offset === 1) {
@@ -1025,9 +1202,9 @@ export default {
 		},
 
 		/* ---------------- 主题切换 ---------------- */
-		toggleTheme() {
+		toggleTheme(fromDrag) {
 			const next = this.theme === 'dark' ? 'light' : 'dark';
-			this.slideTo('seg', next === 'dark' ? 1 : 0);
+			if (!fromDrag) this.slideTo('seg', next === 'dark' ? 1 : 0);
 			this.theme = next;
 			this.themeMode = 'manual'; // 用户手动选过，之后不再被时间覆盖
 			uni.setStorageSync(CACHE_KEY, this.theme);
