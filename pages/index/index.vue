@@ -125,6 +125,13 @@
 				</view>
 			</view>
 
+			<!-- 图片下方的保存按钮：和「生成分享图」预览里的那颗一致 -->
+			<view class="save-bar" v-if="isToday && posterUrl && !posterError">
+				<view class="save-btn" hover-class="save-btn-active" :hover-stay-time="80" @click.stop="downloadImage(posterUrl, '冰块-今日攻略图.png')">
+					<text class="save-btn-txt">保存图片</text>
+				</view>
+			</view>
+
 			<!-- 更多攻略：横向卡片 + 共用一个查看弹层（仅 H5） -->
 			<!-- #ifdef H5 -->
 			<view class="section" v-if="isToday">
@@ -169,6 +176,12 @@
 							<text class="fallback-text">{{ guideFallbackText }}</text>
 							<view class="retry-btn" v-if="guideCanRetry" @click.stop="loadGuide(guideActive)">
 								<text class="retry-txt">重新加载</text>
+							</view>
+						</view>
+
+						<view class="save-bar save-bar-in" v-if="activeGuide.url && activeGuide.status === 'ok'">
+							<view class="save-btn" hover-class="save-btn-active" :hover-stay-time="80" @click.stop="downloadImage(activeGuide.url, '冰块-' + activeGuide.name + '.png')">
+								<text class="save-btn-txt">保存图片</text>
 							</view>
 						</view>
 
@@ -258,7 +271,12 @@
 								@click="shotIdx = n - 1"
 							></view>
 						</view>
-						<view class="shot-full" @click="showFullPoster"><text class="shot-full-txt">看整张攻略图</text></view>
+						<view class="shot-acts">
+							<view class="save-btn save-btn-dark" hover-class="save-btn-active" :hover-stay-time="80" @click.stop="downloadShot">
+								<text class="save-btn-txt">保存图片</text>
+							</view>
+							<view class="shot-full" @click="showFullPoster"><text class="shot-full-txt">看整张攻略图</text></view>
+						</view>
 					</view>
 					<text class="shot-hint">左右滑动切换其它任务</text>
 				</view>
@@ -673,9 +691,9 @@ export default {
 			return [0, 1, 2, 3].map(i => ({ cx: 0.02, cy: 0.02 + i * 0.245, cw: 0.96, ch: 0.235 }));
 		},
 
-		// 有图才显示缩略图 / 允许点击
+		// 只有「今天」有攻略图：昨天/明天不显示缩略图、也不允许点开
 		hasShots() {
-			return !!(this.posterUrl && !this.posterError && this.displayTasks.length);
+			return !!(this.isToday && this.posterUrl && !this.posterError && this.displayTasks.length);
 		},
 
 		shotTaskText() {
@@ -1634,15 +1652,140 @@ export default {
 		},
 
 		/* ---------------- 长图预览 ---------------- */
+		/* ---------------- 图片保存：所有图片共用这一套 ---------------- */
+		// H5：先取 blob 再触发下载，避免跨域图片 <a download> 被浏览器忽略
+		saveBlobUrl(src, name) {
+			// #ifdef H5
+			const fire = (href, revoke) => {
+				const a = document.createElement('a');
+				a.href = href;
+				a.download = name || 'image.png';
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				if (revoke) setTimeout(() => URL.revokeObjectURL(href), 5000);
+			};
+			if (/^data:/.test(src)) { fire(src, false); return Promise.resolve(true); }
+			return fetch(src, { mode: 'cors' })
+				.then(r => {
+					if (!r.ok) throw new Error('HTTP ' + r.status);
+					return r.blob();
+				})
+				.then(blob => { fire(URL.createObjectURL(blob), true); return true; });
+			// #endif
+			// #ifndef H5
+			return Promise.resolve(false);
+			// #endif
+		},
+
+		downloadImage(src, name) {
+			if (!src) {
+				uni.showToast({ title: '暂无可保存的图片', icon: 'none' });
+				return;
+			}
+			// #ifdef H5
+			this.saveBlobUrl(src, name).catch(() => {
+				// 兜底：新标签打开原图，让用户长按保存
+				window.open(src, '_blank');
+				uni.showToast({ title: '请长按图片保存', icon: 'none' });
+			});
+			// #endif
+			// #ifndef H5
+			uni.downloadFile({
+				url: src,
+				success: res => {
+					uni.saveImageToPhotosAlbum({
+						filePath: res.tempFilePath,
+						success: () => uni.showToast({ title: '已保存到相册', icon: 'success' }),
+						fail: () => uni.showToast({ title: '请长按图片保存', icon: 'none' })
+					});
+				},
+				fail: () => uni.showToast({ title: '下载失败，请长按图片保存', icon: 'none' })
+			});
+			// #endif
+		},
+
+		// 任务单图：下载的是从攻略图里切出来的那一格，不是整张
+		downloadShot() {
+			const r = this.shotRects[this.shotIdx] || this.shotRects[0];
+			const name = '冰块-' + this.pad(this.shotIdx + 1) + '.png';
+			// #ifdef H5
+			const img = new Image();
+			img.crossOrigin = 'anonymous';
+			img.onload = () => {
+				const W = img.naturalWidth || this.posterW || 1200;
+				const H = img.naturalHeight || this.posterH || 750;
+				const sx = Math.round(r.cx * W);
+				const sy = Math.round(r.cy * H);
+				const sw = Math.round(r.cw * W);
+				const sh = Math.round(r.ch * H);
+				const c = document.createElement('canvas');
+				c.width = sw;
+				c.height = sh;
+				c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+				const done = blob => {
+					if (!blob) { uni.showToast({ title: '保存失败，请长按图片', icon: 'none' }); return; }
+					const href = URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = href;
+					a.download = name;
+					document.body.appendChild(a);
+					a.click();
+					a.remove();
+					setTimeout(() => URL.revokeObjectURL(href), 5000);
+				};
+				if (c.toBlob) c.toBlob(done, 'image/png');
+				else this.saveBlobUrl(c.toDataURL('image/png'), name);
+			};
+			img.onerror = () => uni.showToast({ title: '保存失败，请长按图片', icon: 'none' });
+			img.src = this.posterUrl;
+			// #endif
+			// #ifndef H5
+			this.downloadImage(this.posterUrl, name);
+			// #endif
+		},
+
+		/* ---------------- 图片全屏查看（带保存按钮，和分享图一致） ---------------- */
+		openImageViewer(src, name) {
+			if (!src) {
+				uni.showToast({ title: '暂无可查看的图片', icon: 'none' });
+				return;
+			}
+			// #ifdef H5
+			const overlay = document.createElement('div');
+			overlay.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(6,8,16,0.94);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;box-sizing:border-box;';
+			const img = document.createElement('img');
+			img.src = src;
+			img.style.cssText = 'display:block;max-width:86vw;max-height:74vh;width:auto;height:auto;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.6);';
+			const saveBtn = document.createElement('button');
+			saveBtn.textContent = '保存图片';
+			saveBtn.style.cssText = 'border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.12);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;font-size:15px;font-weight:600;letter-spacing:0.5px;padding:10px 36px;border-radius:999px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.35);';
+			saveBtn.addEventListener('click', e => {
+				e.stopPropagation();
+				this.downloadImage(src, name || '冰块-图片.png');
+				saveBtn.textContent = '已保存 ovO';
+				setTimeout(() => { saveBtn.textContent = '保存图片'; }, 1800);
+			});
+			const tip = document.createElement('div');
+			tip.textContent = '也可长按图片保存 · 点击空白处关闭';
+			tip.style.cssText = 'color:rgba(255,255,255,0.55);font-size:12px;';
+			overlay.appendChild(img);
+			overlay.appendChild(saveBtn);
+			overlay.appendChild(tip);
+			overlay.addEventListener('click', () => overlay.remove());
+			document.body.appendChild(overlay);
+			// #endif
+			// #ifndef H5
+			uni.previewImage({ urls: [src], current: src });
+			// #endif
+		},
+
 		previewPoster() {
 			if (!this.posterUrl || this.posterError) {
 				uni.showToast({ title: '暂无可用长图', icon: 'none' });
 				return;
 			}
-			uni.previewImage({
-				urls: [this.posterUrl],
-				current: this.posterUrl
-			});
+			this.openImageViewer(this.posterUrl, '冰块-今日攻略图.png');
 		},
 
 		/* ============ 点任务行 → 看这一条对应的格子图 ============ */
@@ -2571,7 +2714,7 @@ export default {
 				uni.showToast({ title: '暂无可查看的图片', icon: 'none' });
 				return;
 			}
-			uni.previewImage({ urls: [g.url], current: g.url });
+			this.openImageViewer(g.url, '冰块-' + g.name + '.png');
 		},
 
 		// 判定休赛期占位图：采样 24×24，过亮且无彩色即视为已结束；取不到像素时当正常图
@@ -3449,6 +3592,7 @@ export default {
 }
 
 .shot-full {
+	margin-left: 14rpx;
 	padding: 10rpx 24rpx;
 	border-radius: 999rpx;
 	border: 1rpx solid rgba(255, 255, 255, 0.24);
@@ -3797,6 +3941,59 @@ export default {
 	text-align: center;
 	font-size: 20rpx;
 	color: var(--text-faint);
+}
+
+/* ---------- 图片下方的保存按钮：和「生成分享图」预览里那颗同一套 ---------- */
+.save-bar {
+	display: flex;
+	justify-content: center;
+	margin-top: 18rpx;
+}
+
+.save-bar-in {
+	margin-top: 20rpx;
+}
+
+.save-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 12rpx 40rpx;
+	border-radius: 999rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: var(--glass-bg);
+	-webkit-backdrop-filter: blur(20rpx) saturate(180%);
+	backdrop-filter: blur(20rpx) saturate(180%);
+	box-shadow: inset 0 1rpx 0 var(--glass-hl), 0 4rpx 16rpx rgba(0, 0, 0, 0.10);
+}
+
+.save-btn-active {
+	transform: scale(0.96);
+	opacity: 0.86;
+}
+
+.save-btn-txt {
+	font-size: 24rpx;
+	font-weight: 600;
+	letter-spacing: 1rpx;
+	color: var(--text);
+}
+
+/* 深色弹层（任务单图）里换成浅色玻璃描边 */
+.save-btn-dark {
+	border-color: rgba(255, 255, 255, 0.28);
+	background-color: rgba(255, 255, 255, 0.12);
+	box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.32), 0 4rpx 15rpx rgba(0, 0, 0, 0.35);
+}
+
+.save-btn-dark .save-btn-txt {
+	color: #FFFFFF;
+}
+
+.shot-acts {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
 }
 
 /* ---------- 红石/黑石：今日降落时间 ---------- */
