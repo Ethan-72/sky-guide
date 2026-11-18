@@ -232,8 +232,9 @@
 			></canvas>
 
 			<text class="footer">仅供个人游戏参考</text>
+		</view>
 
-			<!-- #ifdef H5 -->
+		<!-- #ifdef H5 -->
 			<!-- 单条任务大图：从四宫格攻略图里抠出对应那一格，全屏查看 -->
 			<view
 				class="shot-mask"
@@ -410,8 +411,7 @@
 					</view>
 				</view>
 			</view>
-			<!-- #endif -->
-		</view>
+		<!-- #endif -->
 	</view>
 </template>
 
@@ -477,6 +477,8 @@ export default {
 			shotOpen: false, // 单条任务大图弹层
 			shotIdx: 0, // 当前看的是第几条（0 起）
 			shotTouchX: 0,
+			vpW: 0, // 浏览器可视区域（visualViewport）：iOS Safari 地址栏/工具栏会改变它
+			vpH: 0,
 			updatedAt: '',
 			lastFetchAt: 0, // 上次成功拉取任务的时间戳（毫秒）
 			lastFetchDay: '', // 上次拉取时的日期 YYYY-MM-DD，用于判断是否跨天
@@ -705,13 +707,13 @@ export default {
 			return (r.cw * w) / (r.ch * h);
 		},
 
-		// 弹层舞台尺寸：按格子比例把图装进当前窗口（用 px，电脑/手机都按可视区算）
+		// 弹层舞台尺寸：按格子比例把图装进当前可视区（用 visualViewport，避开 iOS Safari 地址栏误差）
 		shotStageStyle() {
 			const ar = this.shotAspect || 1.9;
-			const vw = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 375;
-			const vh = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 667;
+			const vw = this.vpW || 375;
+			const vh = this.vpH || 667;
 			const maxW = Math.min(vw * 0.88, 560);
-			const maxH = Math.max(120, Math.min(vh * 0.52, vh - 240));
+			const maxH = Math.max(120, Math.min(vh * 0.52, vh - 200));
 			let w = maxW;
 			let h = w / ar;
 			if (h > maxH) {
@@ -1748,11 +1750,17 @@ export default {
 				return;
 			}
 			// #ifdef H5
+			// 以 visualViewport 为准：iOS Safari 的地址栏/工具栏会让 100vh 偏大
+			const vv = window.visualViewport;
+			const vw = vv ? vv.width : window.innerWidth;
+			const vh = vv ? vv.height : window.innerHeight;
+			const vt = vv ? (vv.offsetTop || 0) : 0;
+			const vl = vv ? (vv.offsetLeft || 0) : 0;
 			const overlay = document.createElement('div');
-			overlay.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(6,8,16,0.94);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;box-sizing:border-box;';
+			overlay.style.cssText = 'position:fixed;left:' + vl + 'px;top:' + vt + 'px;width:' + vw + 'px;height:' + vh + 'px;background:rgba(6,8,16,0.94);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;box-sizing:border-box;';
 			const img = document.createElement('img');
 			img.src = src;
-			img.style.cssText = 'display:block;max-width:86vw;max-height:74vh;width:auto;height:auto;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.6);';
+			img.style.cssText = 'display:block;max-width:' + Math.round(vw * 0.86) + 'px;max-height:' + Math.round(vh * 0.72) + 'px;width:auto;height:auto;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.6);';
 			const saveBtn = document.createElement('button');
 			saveBtn.textContent = '保存图片';
 			saveBtn.style.cssText = 'border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.12);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;font-size:15px;font-weight:600;letter-spacing:0.5px;padding:10px 36px;border-radius:999px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.35);';
@@ -1796,6 +1804,35 @@ export default {
 			};
 		},
 
+		// 用 visualViewport 把弹层严格贴合「当前可见的那块屏幕」
+		// iOS Safari 的地址栏/底部工具栏会让 100vh 和 fixed 的 top/bottom 偏移
+		fitShotViewport() {
+			// #ifdef H5
+			this.$nextTick(() => {
+				const vv = window.visualViewport;
+				const w = vv ? vv.width : window.innerWidth;
+				const h = vv ? vv.height : window.innerHeight;
+				const top = vv ? (vv.offsetTop || 0) : 0;
+				const left = vv ? (vv.offsetLeft || 0) : 0;
+				this.vpW = w;
+				this.vpH = h;
+				const mask = document.querySelector('.shot-mask');
+				if (mask) {
+					mask.style.top = top + 'px';
+					mask.style.left = left + 'px';
+					mask.style.width = w + 'px';
+					mask.style.height = h + 'px';
+					mask.style.bottom = 'auto';
+					mask.style.right = 'auto';
+				}
+			});
+			// #endif
+		},
+
+		_onShotViewportChange() {
+			this.fitShotViewport();
+		},
+
 		openTaskShot(i) {
 			if (!this.isToday) return; // 昨天/明天没有攻略图
 			if (!this.posterUrl || this.posterError) {
@@ -1806,6 +1843,11 @@ export default {
 			// #ifdef H5
 			this.shotIdx = i;
 			this.shotOpen = true;
+			this.fitShotViewport();
+			if (window.visualViewport) {
+				window.visualViewport.addEventListener('resize', this._onShotViewportChange);
+				window.visualViewport.addEventListener('scroll', this._onShotViewportChange);
+			}
 			// #endif
 			// #ifndef H5
 			this.previewPoster();
@@ -1814,6 +1856,12 @@ export default {
 
 		closeShot() {
 			this.shotOpen = false;
+			// #ifdef H5
+			if (window.visualViewport) {
+				window.visualViewport.removeEventListener('resize', this._onShotViewportChange);
+				window.visualViewport.removeEventListener('scroll', this._onShotViewportChange);
+			}
+			// #endif
 		},
 
 		showFullPoster() {
@@ -3021,11 +3069,11 @@ export default {
 	animation: content-fade-in 0.4s ease both;
 }
 
-/* 收尾必须回到 transform: none——只要残留 transform，
-   内部的 position:fixed 弹层就会以 .content 为定位基准，导致全屏弹层不居中 */
+/* 只用 opacity，绝不在 .content 上留 transform：
+   iOS Safari 会把带动画的祖先当成 fixed 包含块，导致弹层整体偏移 */
 @keyframes content-fade-in {
-	from { opacity: 0; transform: translateY(8rpx); }
-	to { opacity: 1; transform: none; }
+	from { opacity: 0; }
+	to { opacity: 1; }
 }
 
 /* ---------- 玻璃基类 ---------- */
@@ -3435,6 +3483,9 @@ export default {
 	top: 0;
 	right: 0;
 	bottom: 0;
+	/* Safari 16+ 支持 dvh；JS 里还会用 visualViewport 再校准一次 */
+	height: 100vh;
+	height: 100dvh;
 	z-index: 900;
 	display: flex;
 	align-items: center;
