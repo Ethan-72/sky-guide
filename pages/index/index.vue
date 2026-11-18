@@ -2597,18 +2597,19 @@ export default {
 	--seg-thumb-bd: rgba(255, 255, 255, 0.98);
 	--seg-txt-on: #0B0D12;
 
-	--liq-a: rgba(255, 255, 255, 0.94);
-	--liq-b: rgba(255, 255, 255, 0.72);
-	--liq-bd: rgba(255, 255, 255, 0.98);
-	--liq-hl: rgba(255, 255, 255, 1);
-	--liq-hl-btm: rgba(255, 255, 255, 0.50);
-	--liq-sheen: rgba(198, 216, 255, 0.55);
+	/* 透明玻璃：几乎不铺白底，靠 backdrop 折射 + 边缘高光显形 */
+	--liq-a: rgba(255, 255, 255, 0.26);
+	--liq-b: rgba(255, 255, 255, 0.10);
+	--liq-bd: rgba(255, 255, 255, 0.78);
+	--liq-hl: rgba(255, 255, 255, 0.52);
+	--liq-hl-btm: rgba(255, 255, 255, 0.26);
+	--liq-sheen: rgba(198, 216, 255, 0.45);
 
-	/* 透镜玻璃：浅色底上更明显的奶白 + 虹彩棱边 */
-	--lens-warm: rgba(255, 214, 178, 0.70);
-	--lens-shadow: rgba(92, 118, 170, 0.34);
-	--lens-glow: rgba(255, 255, 255, 0.70);
-	--iris-op: 0.66;
+	/* 透镜玻璃：透明底 + 虹彩棱边 + 轻微暖反光 */
+	--lens-warm: rgba(255, 214, 178, 0.38);
+	--lens-shadow: rgba(92, 118, 170, 0.30);
+	--lens-glow: rgba(255, 255, 255, 0.20);
+	--iris-op: 0.85;
 
 	/* 浅色下爱心改用深玫红，避免粉色在白底上看不清 */
 	--cat-ink: #E5487F;
@@ -2835,8 +2836,8 @@ export default {
 		inset 0 1rpx 0 var(--liq-hl),
 		inset 0 -3rpx 10rpx -4rpx var(--liq-hl-btm),
 		inset 0 0 14rpx 0 var(--lens-glow);
-	-webkit-backdrop-filter: blur(20rpx) saturate(210%) brightness(1.04);
-	backdrop-filter: blur(20rpx) saturate(210%) brightness(1.04);
+	-webkit-backdrop-filter: blur(18rpx) saturate(250%) brightness(1.10);
+	backdrop-filter: blur(18rpx) saturate(250%) brightness(1.10);
 	transform: translate3d(calc(var(--idx, 1) * 100%), 0, 0)
 		scale(calc(var(--sx, 1) * var(--press, 1)), calc(var(--sy, 1) * var(--press, 1)));
 	transform-origin: 50% 50%;
