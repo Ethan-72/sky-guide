@@ -80,9 +80,19 @@
 
 			<!-- 任务列表 -->
 			<view class="glass list">
-				<view class="task" v-for="(item, index) in displayTasks" :key="index">
+				<view
+					class="task"
+					:class="{ 'task-tap': hasShots }"
+					v-for="(item, index) in displayTasks"
+					:key="index"
+					@click="hasShots && openTaskShot(index)"
+				>
 					<view class="badge"><text class="badge-txt">{{ pad(index + 1) }}</text></view>
 					<text class="task-text">{{ item.text }}</text>
+					<!-- 该条任务对应的攻略小图（从四宫格里抠出来的一格） -->
+					<view class="task-thumb" v-if="hasShots && index < 4" :style="thumbBoxStyle(index)">
+						<image class="task-thumb-img" :src="posterUrl" mode="scaleToFill" :style="shotImgStyle(index)"></image>
+					</view>
 				</view>
 				<view class="task" v-if="isToday && loading">
 					<text class="task-text task-dim">正在读取数据…</text>
@@ -215,6 +225,45 @@
 			<text class="footer">仅供个人游戏参考</text>
 
 			<!-- #ifdef H5 -->
+			<!-- 单条任务大图：从四宫格攻略图里抠出对应那一格，全屏查看 -->
+			<view
+				class="shot-mask"
+				:class="{ 'shot-mask-on': shotOpen }"
+				@click="closeShot"
+				@touchmove.stop.prevent
+			>
+				<view class="shot-panel" @click.stop>
+					<view class="shot-head">
+						<view class="shot-badge"><text class="shot-badge-txt">{{ pad(shotIdx + 1) }}</text></view>
+						<text class="shot-title">{{ shotTaskText }}</text>
+						<view class="shot-close" @click="closeShot"><text class="shot-close-txt">关闭</text></view>
+					</view>
+
+					<view
+						class="shot-stage"
+						:style="shotStageStyle"
+						@touchstart="onShotTouchStart"
+						@touchend="onShotTouchEnd"
+					>
+						<image class="shot-img" :src="posterUrl" mode="scaleToFill" :style="shotImgStyle(shotIdx)"></image>
+					</view>
+
+					<view class="shot-foot">
+						<view class="shot-dots">
+							<view
+								class="shot-dot"
+								v-for="n in Math.min(4, displayTasks.length)"
+								:key="n"
+								:class="{ 'shot-dot-on': shotIdx === n - 1 }"
+								@click="shotIdx = n - 1"
+							></view>
+						</view>
+						<view class="shot-full" @click="showFullPoster"><text class="shot-full-txt">看整张攻略图</text></view>
+					</view>
+					<text class="shot-hint">左右滑动切换其它任务</text>
+				</view>
+			</view>
+
 			<!-- 娱乐悬浮球：固定右下，悬在「一键复制」上方约 50rpx，不遮挡按钮 -->
 			<view
 				class="play-fab glass"
@@ -409,6 +458,11 @@ export default {
 			posterUrl: '',
 			posterError: false,
 			posterLoading: true,
+			posterW: 0, // 攻略图原始宽高：用来算四宫格切割比例
+			posterH: 0,
+			shotOpen: false, // 单条任务大图弹层
+			shotIdx: 0, // 当前看的是第几条（0 起）
+			shotTouchX: 0,
 			updatedAt: '',
 			lastFetchAt: 0, // 上次成功拉取任务的时间戳（毫秒）
 			lastFetchDay: '', // 上次拉取时的日期 YYYY-MM-DD，用于判断是否跨天
@@ -601,6 +655,58 @@ export default {
 			if (this.dayOffset === 1) return this.tomorrowTasks;
 			if (this.dayOffset === -1) return this.archivedTasks;
 			return this.tasks;
+		},
+
+		/* -------- 攻略图分格：一张长图里 4 个任务，按比例切出各自的格子 -------- */
+		// 返回每格在原图中的相对矩形 { cx, cy, cw, ch }
+		shotRects() {
+			const w = this.posterW || 1200;
+			const h = this.posterH || 750;
+			if (w / h >= 1.15) {
+				// 横版四宫格：1 左上 / 2 右上 / 3 左下 / 4 右下（顶部是标题带，先让开）
+				return [
+					{ cx: 0.02, cy: 0.152, cw: 0.475, ch: 0.402 },
+					{ cx: 0.505, cy: 0.152, cw: 0.475, ch: 0.402 },
+					{ cx: 0.02, cy: 0.556, cw: 0.475, ch: 0.412 },
+					{ cx: 0.505, cy: 0.556, cw: 0.475, ch: 0.412 }
+				];
+			}
+			// 竖版长图：四条自上而下
+			return [0, 1, 2, 3].map(i => ({ cx: 0.02, cy: 0.02 + i * 0.245, cw: 0.96, ch: 0.235 }));
+		},
+
+		// 有图才显示缩略图 / 允许点击
+		hasShots() {
+			return !!(this.posterUrl && !this.posterError && this.displayTasks.length);
+		},
+
+		shotTaskText() {
+			const t = this.displayTasks[this.shotIdx];
+			return t ? t.text : '';
+		},
+
+		// 当前格子的宽高比：容器按这个比例才能不变形
+		shotAspect() {
+			const r = this.shotRects[this.shotIdx] || this.shotRects[0];
+			const w = this.posterW || 1200;
+			const h = this.posterH || 750;
+			return (r.cw * w) / (r.ch * h);
+		},
+
+		// 弹层舞台尺寸：按格子比例把图装进屏幕（直接用 px，避免 aspect-ratio 兼容问题）
+		shotStageStyle() {
+			const ar = this.shotAspect || 1.9;
+			const vw = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 375;
+			const vh = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 667;
+			const maxW = vw * 0.86;
+			const maxH = vh * 0.46;
+			let w = maxW;
+			let h = w / ar;
+			if (h > maxH) {
+				h = maxH;
+				w = h * ar;
+			}
+			return { width: Math.round(w) + 'px', height: Math.round(h) + 'px' };
 		},
 
 		emptyText() {
@@ -1549,9 +1655,92 @@ export default {
 			});
 		},
 
-		onPosterLoad() {
+		/* ============ 点任务行 → 看这一条对应的格子图 ============ */
+		// 单格在大容器里怎么摆：容器宽高各放大 1/cw、1/ch，再按 cx/cy 往左上推
+		shotImgStyle(i) {
+			const r = this.shotRects[i] || this.shotRects[0];
+			return {
+				width: (100 / r.cw).toFixed(2) + '%',
+				height: (100 / r.ch).toFixed(2) + '%',
+				left: ((-r.cx * 100) / r.cw).toFixed(2) + '%',
+				top: ((-r.cy * 100) / r.ch).toFixed(2) + '%'
+			};
+		},
+
+		// 列表里的小图：高度固定，宽度按格子比例算（rpx 手动换算成 px，避免内联样式不识别）
+		thumbBoxStyle(i) {
+			const r = this.shotRects[i] || this.shotRects[0];
+			const w = this.posterW || 1200;
+			const h = this.posterH || 750;
+			const ar = (r.cw * w) / (r.ch * h);
+			const rpx = (typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 375) / 750;
+			const th = 74 * rpx; // 缩略图高度 74rpx
+			return {
+				width: Math.min(150 * rpx, th * ar).toFixed(1) + 'px',
+				height: th.toFixed(1) + 'px'
+			};
+		},
+
+		openTaskShot(i) {
+			if (!this.isToday) return; // 昨天/明天没有攻略图
+			if (!this.posterUrl || this.posterError) {
+				uni.showToast({ title: '攻略图还没加载好', icon: 'none' });
+				return;
+			}
+			if (i > 3) return; // 长图里只有 4 格
+			// #ifdef H5
+			this.shotIdx = i;
+			this.shotOpen = true;
+			// #endif
+			// #ifndef H5
+			this.previewPoster();
+			// #endif
+		},
+
+		closeShot() {
+			this.shotOpen = false;
+		},
+
+		showFullPoster() {
+			this.shotOpen = false;
+			this.previewPoster();
+		},
+
+		onShotTouchStart(e) {
+			const t = e.touches && e.touches[0];
+			this.shotTouchX = t ? t.clientX : 0;
+		},
+
+		// 左右滑：切上一条 / 下一条
+		onShotTouchEnd(e) {
+			const t = (e.changedTouches && e.changedTouches[0]) || null;
+			if (!t) return;
+			const dx = t.clientX - this.shotTouchX;
+			if (Math.abs(dx) < 40) return;
+			const n = Math.min(4, this.displayTasks.length);
+			let i = this.shotIdx + (dx < 0 ? 1 : -1);
+			if (i < 0) i = 0;
+			if (i > n - 1) i = n - 1;
+			this.shotIdx = i;
+		},
+
+		onPosterLoad(e) {
 			this.posterLoading = false;
 			this.posterError = false;
+			// 记下原图尺寸：四宫格切割比例靠它算
+			const d = (e && e.detail) || {};
+			if (d.width && d.height) {
+				this.posterW = d.width;
+				this.posterH = d.height;
+			} else if (this.posterUrl) {
+				uni.getImageInfo({
+					src: this.posterUrl,
+					success: r => {
+						this.posterW = r.width;
+						this.posterH = r.height;
+					}
+				});
+			}
 		},
 
 		onPosterError() {
@@ -3158,6 +3347,179 @@ export default {
 	justify-content: center;
 	background-image: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
+}
+
+/* ---------- 任务行缩略图：露出这一条对应的攻略格子 ---------- */
+.task-tap {
+	transition: background-color 0.18s ease;
+}
+
+.task-tap:active {
+	background-color: rgba(127, 214, 255, 0.10);
+}
+
+.task-thumb {
+	position: relative;
+	flex-shrink: 0;
+	align-self: center;
+	overflow: hidden;
+	margin-left: 16rpx;
+	border-radius: 12rpx;
+	background-color: rgba(255, 255, 255, 0.06);
+	border: 1rpx solid var(--glass-bd);
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.14);
+}
+
+.task-thumb-img {
+	position: absolute;
+	display: block;
+}
+
+/* ---------- 单条任务大图（全屏弹层） ---------- */
+.shot-mask {
+	position: fixed;
+	left: 0;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 900;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24rpx;
+	box-sizing: border-box;
+	background-color: rgba(4, 6, 10, 0.94);
+	-webkit-backdrop-filter: blur(18px);
+	backdrop-filter: blur(18px);
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.24s ease, visibility 0.24s ease;
+}
+
+.shot-mask-on {
+	opacity: 1;
+	visibility: visible;
+}
+
+.shot-panel {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 100%;
+	max-width: 640rpx;
+	opacity: 0;
+	transform: scale(0.94);
+	transition: opacity 0.26s ease, transform 0.32s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+
+.shot-mask-on .shot-panel {
+	opacity: 1;
+	transform: scale(1);
+}
+
+.shot-head {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	margin-bottom: 24rpx;
+}
+
+.shot-badge {
+	flex-shrink: 0;
+	width: 44rpx;
+	height: 44rpx;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-image: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+}
+
+.shot-badge-txt {
+	font-size: 22rpx;
+	font-weight: 600;
+	color: #FFFFFF;
+}
+
+.shot-title {
+	flex: 1;
+	margin-left: 18rpx;
+	font-size: 28rpx;
+	line-height: 1.4;
+	color: rgba(255, 255, 255, 0.94);
+}
+
+.shot-close {
+	flex-shrink: 0;
+	margin-left: 16rpx;
+	padding: 8rpx 20rpx;
+	border-radius: 999rpx;
+	background-color: rgba(255, 255, 255, 0.14);
+}
+
+.shot-close-txt {
+	font-size: 22rpx;
+	color: rgba(255, 255, 255, 0.86);
+}
+
+.shot-stage {
+	position: relative;
+	overflow: hidden;
+	border-radius: 20rpx;
+	background-color: rgba(255, 255, 255, 0.06);
+	box-shadow: 0 18rpx 50rpx rgba(0, 0, 0, 0.46);
+}
+
+.shot-img {
+	position: absolute;
+	display: block;
+}
+
+.shot-foot {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	margin-top: 26rpx;
+}
+
+.shot-dots {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.shot-dot {
+	width: 14rpx;
+	height: 14rpx;
+	margin-right: 12rpx;
+	border-radius: 50%;
+	background-color: rgba(255, 255, 255, 0.28);
+	transition: width 0.24s ease, background-color 0.24s ease;
+}
+
+.shot-dot-on {
+	width: 34rpx;
+	border-radius: 999rpx;
+	background-color: #FFFFFF;
+}
+
+.shot-full {
+	padding: 10rpx 24rpx;
+	border-radius: 999rpx;
+	border: 1rpx solid rgba(255, 255, 255, 0.24);
+}
+
+.shot-full-txt {
+	font-size: 22rpx;
+	color: rgba(255, 255, 255, 0.86);
+}
+
+.shot-hint {
+	margin-top: 16rpx;
+	font-size: 20rpx;
+	color: rgba(255, 255, 255, 0.38);
 }
 
 .badge-txt {
