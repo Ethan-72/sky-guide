@@ -21,6 +21,7 @@
 						@touchmove.stop.prevent="onDragMove($event, 'seg')"
 						@touchend="onDragEnd($event, 'seg')"
 						@touchcancel="onDragEnd($event, 'seg')"
+						@mousedown.prevent="onDragStart($event, 'seg')"
 						@click="onSegClick"
 						@longpress="resetThemeAuto">
 						<view class="liq-thumb seg-thumb" :style="segThumbStyle"></view>
@@ -62,7 +63,8 @@
 					@touchstart="onDragStart($event, 'day')"
 					@touchmove.stop.prevent="onDragMove($event, 'day')"
 					@touchend="onDragEnd($event, 'day')"
-					@touchcancel="onDragEnd($event, 'day')">
+					@touchcancel="onDragEnd($event, 'day')"
+					@mousedown.prevent="onDragStart($event, 'day')">
 					<view class="liq-thumb daytabs-thumb" :style="dayThumbStyle"></view>
 					<view class="daytab" @click="switchDay(-1)">
 						<text class="daytab-txt" :class="{ 'daytab-txt-on': dayOffset === -1 }" :style="dayTxtStyle(-1)">昨天</text>
@@ -428,6 +430,8 @@ export default {
 			segLead: '0%',
 			daySettle: false, // 吸附阶段：给 thumb 加 CSS transition 兜底（rAF 被暂停时也能到位）
 			segSettle: false,
+			dayPress: false, // 按住时玻璃鼓一圈（跟手按下反馈）
+			segPress: false,
 
 			reloading: false,
 
@@ -610,13 +614,13 @@ export default {
 		/* -------- 滑块位移：把弹簧状态翻译成 CSS 变量 -------- */
 		/* 拉伸时横向变长、纵向变薄，像被手指带着走的一小团液体 */
 		dayThumbStyle() {
-			const st = this.thumbStyle(this.dayTabIdx, this.dayTabStretch, this.dayTabLead);
+			const st = this.thumbStyle(this.dayTabIdx, this.dayTabStretch, this.dayTabLead, this.dayPress ? 1.07 : 1);
 			if (this.daySettle) st.transition = 'transform 0.42s cubic-bezier(0.22, 1.2, 0.36, 1)';
 			return st;
 		},
 
 		segThumbStyle() {
-			const st = this.thumbStyle(this.segIdx, this.segStretch, this.segLead);
+			const st = this.thumbStyle(this.segIdx, this.segStretch, this.segLead, this.segPress ? 1.08 : 1);
 			if (this.segSettle) st.transition = 'transform 0.42s cubic-bezier(0.22, 1.2, 0.36, 1)';
 			return st;
 		},
@@ -844,12 +848,14 @@ export default {
 
 		/* ---------------- 液态玻璃滑块（弹簧驱动） ---------------- */
 		/* 把「第几格 + 拉伸量 + 高光偏移」拼成 CSS 变量，模板里的滑块只认变量 */
-		thumbStyle(idx, stretch, lead) {
+		thumbStyle(idx, stretch, lead, press) {
 			return {
 				'--idx': String(idx),
 				'--sx': String(1 + stretch),
 				// 横向拉伸时纵向收一点，保持体积感
 				'--sy': String(1 - stretch * 0.42),
+				// 按下时整块玻璃鼓一圈
+				'--press': String(press || 1),
 				'--lead': lead
 			};
 		},
@@ -964,26 +970,69 @@ export default {
 		},
 
 		touchX(e) {
+			// 兼容触屏（touches/changedTouches）与鼠标（clientX）
 			const t = e.touches && e.touches[0];
-			return t ? t.clientX : 0;
+			if (t) return t.clientX;
+			const c = e.changedTouches && e.changedTouches[0];
+			if (c) return c.clientX;
+			return typeof e.clientX === 'number' ? e.clientX : 0;
+		},
+
+		// 鼠标拖拽时把 move/up 挂到 window，移出元素也能继续跟手
+		_bindMouse(kind) {
+			this._unbindMouse();
+			const move = (ev) => this.onDragMove(ev, kind);
+			const up = (ev) => this.onDragEnd(ev, kind);
+			this._mouseMove = move;
+			this._mouseUp = up;
+			if (typeof window !== 'undefined' && window.addEventListener) {
+				window.addEventListener('mousemove', move);
+				window.addEventListener('mouseup', up);
+			}
+		},
+
+		_unbindMouse() {
+			if (typeof window !== 'undefined' && window.removeEventListener) {
+				if (this._mouseMove) window.removeEventListener('mousemove', this._mouseMove);
+				if (this._mouseUp) window.removeEventListener('mouseup', this._mouseUp);
+			}
+			this._mouseMove = null;
+			this._mouseUp = null;
 		},
 
 		onDragStart(e, kind) {
 			const m = this.tabMeta(kind);
 			this.stopSpring(kind); // 抢过正在飞行的滑块
 			this.applySlide(kind, this[kind === 'day' ? 'dayTabIdx' : 'segIdx'], 0, '0%', false);
+			const x0 = this.touchX(e);
 			this._drag = {
 				kind,
-				x0: this.touchX(e),
+				x0,
 				i0: m.idx,
 				t0: Date.now(),
-				lastX: this.touchX(e),
+				lastX: x0,
 				lastT: Date.now(),
 				v: 0,
 				n: m.n,
 				moved: false,
 				targetEl: e.currentTarget
 			};
+			// 鼠标按下：拖出元素也要跟手
+			if (e && e.type === 'mousedown') this._bindMouse(kind);
+			// 按下反馈：玻璃鼓一点
+			this.setPress(kind, true);
+		},
+
+		// 按下一瞬间玻璃微放大，松手回到 1（配合 settle 的 CSS transition 会有回弹感）
+		setPress(kind, v) {
+			if (kind === 'day') this.dayPress = v;
+			else this.segPress = v;
+		},
+
+		// 点击切换时也弹一下，跟按下的手感统一
+		pulsePress(kind) {
+			this.setPress(kind, true);
+			setTimeout(() => this.setPress(kind, false), 130);
 		},
 
 		onDragMove(e, kind) {
@@ -1018,6 +1067,8 @@ export default {
 			const d = this._drag;
 			if (!d || d.kind !== kind) return;
 			this._drag = null;
+			this._unbindMouse(); // 鼠标拖拽结束后解除全局监听
+			this.setPress(kind, false);
 			if (!d.moved) return; // 纯点击，交给 click 处理
 
 			// 松手：速度投影 + 取整 → 吸附目标格
@@ -1094,7 +1145,10 @@ export default {
 
 		switchDay(offset, fromDrag) {
 			if (this.dayOffset === offset) return;
-			if (!fromDrag) this.slideTo('day', offset + 1); // 纯点击才走弹簧；拖拽时吸附弹簧已接管
+			if (!fromDrag) {
+				this.pulsePress('day'); // 点击时玻璃先鼓一下再飞过去
+				this.slideTo('day', offset + 1); // 纯点击才走弹簧；拖拽时吸附弹簧已接管
+			}
 			this.dayOffset = offset;
 			if (offset === -1) this.loadArchive();
 			if (offset === 1) {
@@ -1204,7 +1258,10 @@ export default {
 		/* ---------------- 主题切换 ---------------- */
 		toggleTheme(fromDrag) {
 			const next = this.theme === 'dark' ? 'light' : 'dark';
-			if (!fromDrag) this.slideTo('seg', next === 'dark' ? 1 : 0);
+			if (!fromDrag) {
+				this.pulsePress('seg');
+				this.slideTo('seg', next === 'dark' ? 1 : 0);
+			}
 			this.theme = next;
 			this.themeMode = 'manual'; // 用户手动选过，之后不再被时间覆盖
 			uni.setStorageSync(CACHE_KEY, this.theme);
@@ -2488,6 +2545,12 @@ export default {
 	--liq-hl-btm: rgba(255, 255, 255, 0.10);
 	--liq-sheen: rgba(255, 255, 255, 0.24);
 
+	/* 透镜玻璃：外溢高光 + 虹彩色散描边（暗色底收敛一点，避免糊） */
+	--lens-warm: rgba(150, 190, 255, 0.30);
+	--lens-shadow: rgba(0, 0, 0, 0.50);
+	--lens-glow: rgba(190, 220, 255, 0.16);
+	--iris-op: 0.40;
+
 	/* 摸小猫：粉色爱心 + 柔光，暗色底更显亮 */
 	--cat-ink: #FFB3D1;
 	--cat-glow: rgba(255, 130, 185, 0.85);
@@ -2540,6 +2603,12 @@ export default {
 	--liq-hl: rgba(255, 255, 255, 1);
 	--liq-hl-btm: rgba(255, 255, 255, 0.50);
 	--liq-sheen: rgba(198, 216, 255, 0.55);
+
+	/* 透镜玻璃：浅色底上更明显的奶白 + 虹彩棱边 */
+	--lens-warm: rgba(255, 214, 178, 0.70);
+	--lens-shadow: rgba(92, 118, 170, 0.34);
+	--lens-glow: rgba(255, 255, 255, 0.70);
+	--iris-op: 0.66;
 
 	/* 浅色下爱心改用深玫红，避免粉色在白底上看不清 */
 	--cat-ink: #E5487F;
@@ -2746,7 +2815,8 @@ export default {
 }
 
 /* ---------- 液态玻璃滑块（日期切换 / 日夜切换共用） ---------- */
-/* 位置用 --idx（可为小数，弹簧中间态），拉伸用 --sx/--sy，高光用 --lead */
+/* 位置用 --idx（可为小数，弹簧中间态），拉伸用 --sx/--sy，高光用 --lead
+   质感参考：iOS 透镜玻璃 —— 滑块比轨道外溢一圈、边缘虹彩色散、按下微放大 */
 .liq-thumb {
 	position: absolute;
 	z-index: 0;
@@ -2755,17 +2825,46 @@ export default {
 	box-sizing: border-box;
 	border-radius: 999rpx;
 	border: 1rpx solid var(--liq-bd);
-	background-image: linear-gradient(158deg, var(--liq-a) 0%, var(--liq-b) 100%);
+	background-image:
+		radial-gradient(115% 150% at 26% 2%, var(--liq-hl) 0%, rgba(255, 255, 255, 0) 60%),
+		radial-gradient(120% 160% at 84% 106%, var(--lens-warm) 0%, rgba(255, 255, 255, 0) 64%),
+		linear-gradient(158deg, var(--liq-a) 0%, var(--liq-b) 100%);
 	box-shadow:
-		0 4rpx 14rpx rgba(0, 0, 0, 0.16),
+		0 12rpx 26rpx -10rpx var(--lens-shadow),
+		0 2rpx 6rpx rgba(0, 0, 0, 0.08),
 		inset 0 1rpx 0 var(--liq-hl),
-		inset 0 -1rpx 0 var(--liq-hl-btm),
-		inset 0 8rpx 18rpx -10rpx var(--liq-hl);
-	-webkit-backdrop-filter: blur(16px) saturate(220%);
-	backdrop-filter: blur(16px) saturate(220%);
-	transform: translate3d(calc(var(--idx, 1) * 100%), 0, 0) scale(var(--sx, 1), var(--sy, 1));
+		inset 0 -3rpx 10rpx -4rpx var(--liq-hl-btm),
+		inset 0 0 14rpx 0 var(--lens-glow);
+	-webkit-backdrop-filter: blur(20rpx) saturate(210%) brightness(1.04);
+	backdrop-filter: blur(20rpx) saturate(210%) brightness(1.04);
+	transform: translate3d(calc(var(--idx, 1) * 100%), 0, 0)
+		scale(calc(var(--sx, 1) * var(--press, 1)), calc(var(--sy, 1) * var(--press, 1)));
 	transform-origin: 50% 50%;
 	will-change: transform;
+}
+
+/* 虹彩棱边：一圈低透明度的彩色色散，就是那种"彩透"的边缘 */
+.liq-thumb::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	border-radius: inherit;
+	padding: 2rpx;
+	background: conic-gradient(from 145deg,
+		rgba(255, 138, 196, 0.95) 0%,
+		rgba(255, 208, 140, 0.85) 18%,
+		rgba(150, 255, 205, 0.75) 36%,
+		rgba(130, 190, 255, 0.95) 54%,
+		rgba(190, 150, 255, 0.90) 72%,
+		rgba(255, 138, 196, 0.95) 100%);
+	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	mask-composite: exclude;
+	opacity: var(--iris-op, 0.5);
+	filter: blur(0.6rpx) saturate(150%);
+	pointer-events: none;
 }
 
 /* 滑块高光：跟着速度左右流动 */
@@ -2778,6 +2877,7 @@ export default {
 	height: 200%;
 	transform: translateX(calc(-50% + var(--lead, 0%)));
 	background-image: radial-gradient(closest-side, var(--liq-sheen) 0%, rgba(255, 255, 255, 0) 100%);
+	opacity: 0.75;
 	pointer-events: none;
 }
 
@@ -2830,7 +2930,6 @@ export default {
 	padding: 4rpx;
 	box-sizing: border-box;
 	border-radius: 999rpx;
-	overflow: hidden;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
 	-webkit-backdrop-filter: blur(20px) saturate(200%);
@@ -2838,10 +2937,11 @@ export default {
 	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm), inset 0 0 0 1rpx var(--glass-rim), 0 2px 10px rgba(0, 0, 0, 0.10);
 }
 
+/* 滑块上下外溢，比轨道高一圈 —— 透镜鼓出来的感觉 */
 .seg-thumb {
 	left: 4rpx;
-	top: 4rpx;
-	bottom: 4rpx;
+	top: -7rpx;
+	bottom: -7rpx;
 	width: calc((100% - 8rpx) / 2);
 }
 
@@ -2881,7 +2981,6 @@ export default {
 	align-items: center;
 	padding: 5rpx;
 	border-radius: 999rpx;
-	overflow: hidden;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
 	-webkit-backdrop-filter: blur(20px) saturate(200%);
@@ -2902,8 +3001,8 @@ export default {
 
 .daytabs-thumb {
 	left: 5rpx;
-	top: 5rpx;
-	bottom: 5rpx;
+	top: -8rpx;
+	bottom: -8rpx;
 	width: calc((100% - 10rpx) / 3);
 }
 
