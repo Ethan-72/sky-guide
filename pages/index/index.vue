@@ -84,7 +84,7 @@
 					class="task"
 					:class="{ 'task-tap': hasShots }"
 					v-for="(item, index) in displayTasks"
-					:key="index"
+					:key="item.id || item.text"
 					@click="hasShots && openTaskShot(index)"
 				>
 					<view class="badge"><text class="badge-txt">{{ pad(index + 1) }}</text></view>
@@ -279,165 +279,49 @@
 				</view>
 			</view>
 
-			<!-- 娱乐悬浮球：固定右下，悬在「一键复制」上方约 50rpx，不遮挡按钮 -->
-			<view
-				class="play-fab glass"
-				hover-class="play-fab-active"
-				:hover-stay-time="80"
-				@click="openPlay"
-			>
-				<text class="play-fab-txt">玩</text>
-			</view>
+			<!-- 娱乐模块（摸小猫 / 抽签 / 答案之书 / 计算器）已拆到 components/play-drawer -->
+			<play-drawer />
 
-			<!-- 娱乐抽屉：底部滑出，内部单层复用三个子视图 -->
-			<view class="play-mask" :class="{ 'play-mask-on': playOpen }" @click="closePlay">
-				<view class="play-drawer glass" :class="{ 'play-drawer-on': playOpen }" @click.stop>
-					<view class="play-grip"></view>
-
-					<view class="play-head">
-						<view class="play-back" v-if="playView !== 'list'" @click="playBack">
-							<text class="play-back-txt">‹ 返回</text>
-						</view>
-						<text class="play-title" :class="{ 'play-title-indent': playView === 'list' }">{{ playTitle }}</text>
-						<view class="play-close" @click="closePlay">
-							<text class="play-close-txt">关闭</text>
-						</view>
-					</view>
-
-					<!-- 三个入口 -->
-					<view class="play-list" v-if="playView === 'list'">
-						<view class="play-item" v-for="p in playItems" :key="p.key" @click="playTo(p.key)">
-							<view class="play-icon"><text class="play-icon-txt">{{ p.icon }}</text></view>
-							<view class="play-item-info">
-								<text class="play-item-name">{{ p.name }}</text>
-								<text class="play-item-desc">{{ p.desc }}</text>
-							</view>
-							<text class="play-arrow">›</text>
-						</view>
-					</view>
-
-					<!-- 摸小猫 -->
-					<view class="play-body" v-else-if="playView === 'cat'">
-						<!-- 左上角：花色选择 -->
-						<view class="cat-coatbar">
-							<text class="cat-coat-label">花色</text>
-							<view class="cat-coat-dots">
-								<view
-									class="cat-coat-dot"
-									v-for="c in catCoats"
-									:key="c.key"
-									:class="['cat-dot-' + c.key, { 'cat-dot-on': catCoat === c.key }]"
-									@click="pickCoat(c.key)"
-								></view>
-							</view>
-							<text class="cat-coat-name">{{ catCoatName }}</text>
-						</view>
-
-						<view class="cat-stage" @click="patCat">
-							<!-- 爱心粒子 -->
-							<view
-								class="cat-heart"
-								v-for="h in catHearts"
-								:key="h.id"
-								:style="{
-									left: 'calc(50% + ' + h.x + 'rpx)',
-									top: h.y + 'rpx',
-									width: h.size + 'rpx',
-									height: h.size + 'rpx',
-									animationDelay: h.delay + 'ms',
-									'--hrot': h.rot + 'deg'
-								}"
-							></view>
-
-							<view class="cat-halo" :class="{ 'cat-halo-on': catHit }"></view>
-
-							<!-- 写实猫头照片：花色切换只换 src -->
-							<image
-								class="cat-photo"
-								:class="{ 'cat-patted': catHit }"
-								:src="catPhotoSrc"
-								mode="widthFix"
-								draggable="false"
-							></image>
-
-							<text class="cat-hint">轻轻摸摸它，爱心 +1</text>
-						</view>
-						<text class="cat-count">已收获 <text class="cat-num">{{ catCount }}</text> 颗爱心</text>
-					</view>
-
-					<!-- 光遇抽签 -->
-					<view class="play-body" v-else-if="playView === 'sign'">
-						<view class="sign-card" :class="{ 'sign-card-rolling': signRolling }">
-							<text class="sign-level" :class="signResult && !signRolling ? 'sign-' + signResult.tone : 'sign-idle'">
-								{{ signRolling ? '…' : signResult ? signResult.level : '？' }}
-							</text>
-							<text class="sign-text">{{ signRolling ? '正在摇签…' : signResult ? signResult.text : '摇一摇，看看今天的光遇运势' }}</text>
-						</view>
-						<view class="play-btn" hover-class="play-btn-active" :hover-stay-time="80" @click="drawSign">
-							<text class="play-btn-txt">{{ signResult ? '再抽一签' : '抽 个 签' }}</text>
-						</view>
-					</view>
-
-					<!-- 答案之书 -->
-					<view class="play-body" v-else-if="playView === 'answer'">
-						<view class="answer-card" :class="{ 'answer-card-rolling': answerRolling }">
-							<text class="answer-hint">心里默念一个问题</text>
-							<text class="answer-text">{{ answerRolling ? '……' : answerText || '然后翻开这一页' }}</text>
-						</view>
-						<view class="play-btn" hover-class="play-btn-active" :hover-stay-time="80" @click="drawAnswer">
-							<text class="play-btn-txt">翻开答案之书</text>
-						</view>
-					</view>
-
-					<!-- 计算器：纯本地，液态玻璃小键盘 -->
-					<view class="play-body calc-body" v-else>
-						<view class="calc-screen">
-							<text class="calc-expr">{{ calcExpr }}</text>
-							<text class="calc-out" :class="{ 'calc-out-err': calcErr }">{{ calcOut }}</text>
-						</view>
-						<view class="calc-pad">
-							<view
-								class="calc-key"
-								v-for="k in calcKeys"
-								:key="k.k"
-								:class="k.cls"
-								hover-class="calc-key-active"
-								:hover-stay-time="60"
-								@click="calcPress(k.k)"
-							>
-								<text class="calc-key-txt">{{ k.k }}</text>
-							</view>
-						</view>
-					</view>
-				</view>
-			</view>
 		<!-- #endif -->
 	</view>
 </template>
 
 <script>
-// 接口：
-//  · /sky/gyrw          文字任务 → { code, msg, rw:[{text}] }
-//  · /sky/sc/scrw       攻略图，返回 image/png 二进制流，URL 本身即图片地址
-//  · api.qmkjcm.cn      明日任务 → { data:{ task_list:[{date, quest_cn}] } }，一次返回今天+明天
+import PlayDrawer from '../../components/play-drawer/play-drawer.vue';
+import {
+	withKey,
+	safeJson,
+	GUIDE_API,
+	fetchTasks as apiFetchTasks,
+	fetchPosterUrl,
+	fetchTomorrow as apiFetchTomorrow,
+	fetchJinLa as apiFetchJinLa,
+	fetchGuideJson as apiFetchGuideJson,
+	fetchGuideTexts as apiFetchGuideTexts
+} from '../../api/sky.js';
+import { getShotRects, getHsDrop, FALLBACK_POSTER_W, FALLBACK_POSTER_H } from '../../utils/guide-config.js';
+import {
+	thumbStyle as sliderThumbStyle,
+	tabActivity as sliderTabActivity,
+	mixTxtStyle as sliderMixTxtStyle,
+	dampIdx as sliderDampIdx
+} from '../../utils/liquid-slider.js';
+import {
+	measureShareLayout as measureShareLayoutImpl,
+	drawSharePosterH5 as paintShareH5,
+	drawSharePosterNative as paintShareNative
+} from '../../utils/share-poster.js';
+
+/* 本页只保留与 UI 直接相关的本地状态键；接口地址、密钥、控速队列都在 api/sky.js */
 const CACHE_KEY = 'sky_guide_theme';
 const MODE_KEY = 'sky_guide_theme_mode';
 const ARCHIVE_KEY = 'sky_guide_archive'; // 接口只给今天，昨天回看靠本地存档
-const MR_API = 'https://api.qmkjcm.cn/api/gy_mr_rw/'; // CORS: *
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 18;
 
-// 有代理时走 /api，纯静态托管构建时注入绝对地址
-const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
-
-const GUIDE_API = {
-	jl: { img: API_BASE + '/sky/sc/scjl', text: API_BASE + '/sky/sc/lzwz' },
-	hs: { json: API_BASE + '/sky/gytq' },
-	fk: { img: API_BASE + '/sky/sc/scfk' },
-	mf: { img: API_BASE + '/sky/mf/magic', text: API_BASE + '/sky/mf/mf' }
-};
-
 export default {
+	components: { PlayDrawer },
+
 	data() {
 		return {
 			// -------- 主题：dark / light；themeMode: auto 按时间 / manual 手动 --------
@@ -447,20 +331,7 @@ export default {
 			phase: 'day',
 
 			// -------- 接口配置 --------
-			// 统一走相对路径 /api，由部署平台转发到 https://api.t1qq.com/api
-			// · Vercel：vercel.json 的 rewrites 负责转发
-			// · 本地 H5：vite.config.js 的 server.proxy 负责转发
-			// 这样写既能绕开跨域，也不用把域名硬编码进前端代码。
-			useMock: false, // 置 true 可切回纯 Mock 演示
-			apiUrl: API_BASE + '/sky/gyrw',
-			apiKey: 'BGqiyBXO4v8CS4JdoH7oUCcoWh',
-
-			// 攻略图片接口：直接返回图片流，URL 本身即图片地址
-			scrwUrl: API_BASE + '/sky/sc/scrw',
-			scrwKey: 'BGqiyBXO4v8CS4JdoH7oUCcoWh',
-
-			// 明天任务接口（固定绝对地址，不参与 /api 代理）
-			mrUrl: MR_API,
+			// 接口地址、密钥与控速队列统一收敛在 api/sky.js，页面不再持有任何接口常量
 
 			// -------- 页面数据 --------
 			loading: false,
@@ -524,116 +395,8 @@ export default {
 			clockMer: '上午',
 			clockLastSec: -1, // 上一次渲染到的整秒，用来避免每帧都触发更新
 			refreshTip: '',
-			clockTimer: 0, // rAF 不可用时的降级定时器句柄
-
-			// -------- 娱乐悬浮球：摸小猫 / 抽签 / 答案之书 / 计算器（纯本地，无请求） --------
-			playOpen: false,
-			playView: 'list', // list 入口列表 / cat / sign / answer / calc
-			catCount: 0, // 累计爱心
-			catHearts: [], // 爱心粒子队列 { id, x, y, size, rot, delay }
-			catSeq: 0, // 爱心唯一 id
-			catHit: false, // 抚摸动画开关（点一下置 true，360ms 后复位）
-			catCoat: 'orange', // 当前花色 key
-			// 4 种花色：key 对应 static/cats/<key>.png，name 显示在左上角
-			catCoats: [
-				{ key: 'orange', name: '橘猫' },
-				{ key: 'siamese', name: '暹罗猫' },
-				{ key: 'calico', name: '三花猫' },
-				{ key: 'cow', name: '奶牛猫' }
-			],
-			signResult: null, // { level, text, tone }
-			signRolling: false,
-			answerText: '',
-			answerRolling: false,
-			// 计算器状态：全本地，immediate-execution 计算
-			calcInput: '0', // 当前输入串
-			calcAcc: null, // 累积值
-			calcOp: '', // 挂起运算符：+ − × ÷
-			calcFresh: true, // 下一个数字键是否覆盖当前输入
-			calcErr: false,
-			calcExpr: '', // 屏幕上方算式小字
-			calcKeys: [
-				{ k: 'C', cls: 'calc-key-fn' },
-				{ k: '⌫', cls: 'calc-key-fn' },
-				{ k: '÷', cls: 'calc-key-op' },
-				{ k: '×', cls: 'calc-key-op' },
-				{ k: '7' },
-				{ k: '8' },
-				{ k: '9' },
-				{ k: '−', cls: 'calc-key-op' },
-				{ k: '4' },
-				{ k: '5' },
-				{ k: '6' },
-				{ k: '+', cls: 'calc-key-op' },
-				{ k: '1' },
-				{ k: '2' },
-				{ k: '3' },
-				{ k: '=', cls: 'calc-key-eq calc-key-tall' },
-				{ k: '0', cls: 'calc-key-wide' },
-				{ k: '.' }
-			],
-			// 抽签文案：写死在本地，不请求任何接口
-			signPool: [
-				{ level: '大吉', text: '今日跑暴风眼必不掉翼 (๑˃̵ᴗ˂̵)', tone: 'best' },
-				{ level: '大吉', text: '先祖见你都主动伸手，蜡烛自己往兜里跳 (✧∇✧)', tone: 'best' },
-				{ level: '大吉', text: '暮土一次过，冥龙今天在打瞌睡 (´｡• ᵕ •｡`)', tone: 'best' },
-				{ level: '中吉', text: '牵手好友必有回响，今日宜双人跑图 (๑•̀ㅂ•́)و✧', tone: 'good' },
-				{ level: '中吉', text: '雨林隐藏图会给你一点小惊喜 (｡･ω･｡)ﾉ♡', tone: 'good' },
-				{ level: '中吉', text: '今日蜡烛格外听话，跑两个图就够本了 (・∀・)', tone: 'good' },
-				{ level: '平', text: '宜挂机，忌跑图 (￣▽￣)ノ', tone: 'flat' },
-				{ level: '平', text: '适合在云野坐着看云，蜡烛不急 (￣ω￣)', tone: 'flat' },
-				{ level: '平', text: '今日运势平平，但风景很好 (´ω｀)', tone: 'flat' },
-				{ level: '小凶', text: '去暮土小心被皮皮虾盯上 (｡•́︿•̀｡)', tone: 'bad' },
-				{ level: '小凶', text: '今日宜绕开螃蟹堆，被撞了别怪签文没提醒 (＞﹏＜)', tone: 'bad' },
-				{ level: '小凶', text: '暴风眼今日风大，翼少的先别去 (´；ω；｀)', tone: 'bad' }
-			],
-			// 答案之书：30+ 条光遇梗，全部本地写死，断网也能翻
-			answerPool: [
-				'别想了，去跑图吧 (๑•̀ㅂ•́)و✧',
-				'是的 (´｡• ᵕ •｡`)',
-				'再等等，蜡烛还没熟 (￣▽￣)',
-				'绝对不行 (＞﹏＜)',
-				'今天没戏，明天再来 (｡•́︿•̀｡)',
-				'你心里其实已经有答案了 (￣ω￣)',
-				'会有人牵你的手 (｡･ω･｡)ﾉ♡',
-				'放手吧，前面还有更好的 (´；ω；｀)',
-				'就现在，别犹豫 (๑˃̵ᴗ˂̵)',
-				'换个方向试试，比如雨林 (・∀・)',
-				'今天必炸大花！(๑•̀ㅂ•́)و✧',
-				'去跑图吧，冥龙在等你 (￣^￣)',
-				'答案在雨林隐藏图里哦 (｡•́︿•̀｡)',
-				'先点了先祖再说 (✧∇✧)',
-				'你需要的是朋友，不是答案 (๑•́ ₃ •̀๑)',
-				'会掉的，但不会掉太多 (￣▽￣)ノ',
-				'放心飞，风会接住你 (´ω｀)',
-				'这件斗篷你值得拥有 (｡•̀ᴗ-)✧',
-				'今天的运气藏在暮土 (・_・;)',
-				'别问，问就是缘分 (￣ω￣)',
-				'先挂机十分钟，答案自己会来 (￣▽￣)',
-				'去吧，红石今天站在你这边 (๑•̀ㅂ•́)و✧',
-				'你已经比昨天强了 (๑•̀ㅂ•́)✧',
-				'别急，蜡烛会一直亮着 (｡･ω･｡)',
-				'这次真的可以 (๑˃̵ᴗ˂̵)',
-				'大概率会掉翼，但你不在乎 (´；ω；｀)',
-				'问得太多了，先祖也有点累 (￣▽￣;)',
-				'云野的风说：可以 (´｡• ᵕ •｡`)',
-				'今晚的星空会给你提示 (✧∇✧)',
-				'想清楚再点，确认键不贵 (・∀・)',
-				'换个搭子，答案会不一样 (￣ω￣)',
-				'如果你还在犹豫，那就是不行 (｡•́︿•̀｡)',
-				'答案是肯定的，只是你不敢信 (๑•̀ㅂ•́)و✧',
-				'再跑一张图，你就想通了 (￣▽￣)ノ',
-				'今天的你值得一点小幸运 (｡･ω･｡)ﾉ♡'
-			],
-
-			// -------- Mock 数据（4 条任务 + 1 张网络长图） --------
-			mockTasks: [
-				{ id: 1, text: '在云野圆形水池边找到沉睡的蜡烛，点亮后跟随光圈飞行一圈', from: '云野' },
-				{ id: 2, text: '与一位好友牵手进入霞谷冰面，完成一次完整滑行', from: '霞谷' },
-				{ id: 3, text: '收集雨林深处的 3 根蜡烛，注意避开冥龙巡逻路线', from: '雨林' },
-				{ id: 4, text: '在禁阁顶层向先祖鞠躬，领取今日的季节蜡烛', from: '禁阁' }
-			],
-			mockPoster: '' // 演示模式不放假图，避免把占位图误认成今日攻略
+			clockTimer: 0, // 时钟定时器句柄（1s 一跳，替代常驻 rAF）
+			visHandler: null // 页面重新可见时立刻对齐时间
 		};
 	},
 
@@ -673,20 +436,9 @@ export default {
 
 		/* -------- 攻略图分格：一张长图里 4 个任务，按比例切出各自的格子 -------- */
 		// 返回每格在原图中的相对矩形 { cx, cy, cw, ch }
+		// 四宫格切割比例在 utils/guide-config.js 里配置，换图只需改配置
 		shotRects() {
-			const w = this.posterW || 1200;
-			const h = this.posterH || 750;
-			if (w / h >= 1.15) {
-				// 横版四宫格：1 左上 / 2 右上 / 3 左下 / 4 右下（顶部是标题带，先让开）
-				return [
-					{ cx: 0.02, cy: 0.152, cw: 0.475, ch: 0.402 },
-					{ cx: 0.505, cy: 0.152, cw: 0.475, ch: 0.402 },
-					{ cx: 0.02, cy: 0.556, cw: 0.475, ch: 0.412 },
-					{ cx: 0.505, cy: 0.556, cw: 0.475, ch: 0.412 }
-				];
-			}
-			// 竖版长图：四条自上而下
-			return [0, 1, 2, 3].map(i => ({ cx: 0.02, cy: 0.02 + i * 0.245, cw: 0.96, ch: 0.235 }));
+			return getShotRects(this.posterW, this.posterH);
 		},
 
 		// 只有「今天」有攻略图：昨天/明天不显示缩略图、也不允许点开
@@ -702,8 +454,8 @@ export default {
 		// 当前格子的宽高比：容器按这个比例才能不变形
 		shotAspect() {
 			const r = this.shotRects[this.shotIdx] || this.shotRects[0];
-			const w = this.posterW || 1200;
-			const h = this.posterH || 750;
+			const w = this.posterW || FALLBACK_POSTER_W;
+			const h = this.posterH || FALLBACK_POSTER_H;
 			return (r.cw * w) / (r.ch * h);
 		},
 
@@ -745,41 +497,6 @@ export default {
 			return st;
 		},
 
-
-		// 当前花色的猫头照片路径
-		catPhotoSrc() {
-			return '/static/cats/' + this.catCoat + '.png';
-		},
-		// 左上角当前花色的中文名（computed，缓存）
-		catCoatName() {
-			const c = this.catCoats.find(x => x.key === this.catCoat);
-			return c ? c.name : '橘猫';
-		},
-
-		/* -------- 娱乐抽屉 -------- */
-		playTitle() {
-			if (this.playView === 'cat') return '摸小猫';
-			if (this.playView === 'sign') return '光遇抽签';
-			if (this.playView === 'answer') return '答案之书';
-			if (this.playView === 'calc') return '计算器';
-			return '歇一会儿';
-		},
-
-		playItems() {
-			return [
-				{ key: 'cat', icon: '猫', name: '摸小猫', desc: '轻轻一摸，爱心 +1' },
-				{ key: 'sign', icon: '签', name: '光遇抽签', desc: '今日运势，玄学一把' },
-				{ key: 'answer', icon: '书', name: '答案之书', desc: '心里默念问题，翻开一页' },
-				{ key: 'calc', icon: '算', name: '计算器', desc: '加减乘除，随手算一算' }
-			];
-		},
-
-		/* 计算器显示：出错时给提示，否则就是当前输入串 */
-		calcOut() {
-			if (this.calcErr) return '不能除以 0';
-			return this.calcInput;
-		},
-
 		// #ifdef H5
 		activeGuide() {
 			return this.guides[this.guideActive] || { name: '', desc: '', status: 'idle', url: '', err: '' };
@@ -801,31 +518,8 @@ export default {
 
 		// 红石/黑石降落时间，本地推算：1-15 号周二黑石、周六周日红石；16 号起周三黑石、周五周日红石。没有的日子返回空数组。
 		hsDrop() {
-			const now = new Date();
-			const day = now.getDate();
-			const wd = now.getDay(); // 0 = 周日
-			let type = '';
-
-			if (day <= 15) {
-				if (wd === 2) type = '黑石';
-				else if (wd === 6 || wd === 0) type = '红石';
-			} else {
-				if (wd === 3) type = '黑石';
-				else if (wd === 5 || wd === 0) type = '红石';
-			}
-
-			const TABLE = {
-				0: ['07:08-08:00', '13:08-14:00', '19:08-20:00'],
-				1: ['07:08-08:00', '13:08-14:00', '19:08-20:00'],
-				2: ['09:08-10:00', '14:08-15:00', '19:08-20:00'],
-				3: ['09:08-10:00', '15:08-16:00', '21:08-22:00'],
-				4: ['10:08-11:00', '16:08-17:00', '22:08-23:00'],
-				5: ['11:08-12:00', '17:08-18:00', '23:08-24:00'],
-				6: ['10:08-11:00', '14:08-15:00', '22:08-23:00']
-			};
-
-			const slots = type ? TABLE[wd] || [] : [];
-			return { type, slots, line: slots.join(' / ') };
+			// 黑石/红石时段表在 utils/guide-config.js
+			return getHsDrop(new Date());
 		}
 		// #endif
 	},
@@ -856,38 +550,22 @@ export default {
 		this.segIdx = this.theme === 'dark' ? 1 : 0;
 		this.initSpring();
 
-		// 先用 Mock 渲染，保证首屏立刻可见
-		this.applyMock();
+		// 首屏不再塞假任务：按「主任务 → 长图 → 明日 → 季蜡」排队拉，api 层已串行控速
+		this.lastFetchAt = Date.now();
+		this.lastFetchDay = this.todayText();
+		this.fetchTasks()
+			.then(() => this.fetchPoster())
+			.then(() => this.fetchTomorrow()) // 顺带把明天也拿到，点「明天」不用等
+			.then(() => this.fetchJinLa()) // 标题下方的「今日季蜡」
+			.then(() => {
+				// 攻略副标题与休赛判定不影响主流程，等主数据就位后再补，避免首屏并发被限流
+				// #ifdef H5
+				this.prefetchGuideTexts();
+				this.precheckEndedGuide();
+				// #endif
+			});
 
-		// useMock 为 false 时发起三个独立请求：文字任务 + 攻略图片 + 明日任务
-		if (!this.useMock) {
-			// 先记下时间，避免 onLoad 之后紧跟的 onShow 又触发一次重复请求
-			this.lastFetchAt = Date.now();
-			this.lastFetchDay = this.todayText();
-			this.fetchTasks();
-			this.fetchPoster();
-			this.fetchTomorrow(); // 顺带把明天也拿到，点「明天」不用等
-			this.fetchJinLa(); // 标题下方的「今日季蜡」
-		}
-
-		// #ifdef H5
-		// 更多攻略的副标题（文字接口很小），静默预取，卡片上能直接显示内容
-		this.prefetchGuideTexts();
-		// 复刻先祖若处于休赛期，卡片直接标「本期已结束」
-		this.precheckEndedGuide();
-		// 首次触摸/点击就解锁音频：摸小猫第一下即可出声（不支持的浏览器静默降级）
-		if (typeof document !== 'undefined' && document.addEventListener) {
-			const unlock = () => {
-				this.ensureAudio();
-				document.removeEventListener('pointerdown', unlock);
-				document.removeEventListener('touchstart', unlock);
-			};
-			document.addEventListener('pointerdown', unlock);
-			document.addEventListener('touchstart', unlock);
-		}
-		// #endif
-
-		// 时钟 + 距刷新倒计时：rAF 驱动，每拍重新取系统时间（切后台回来也立刻准确）
+		// 时钟 + 距刷新倒计时
 		this.startClock();
 	},
 
@@ -913,7 +591,6 @@ export default {
 
 		// 数据新鲜度检查：从后台切回来时，只要「跨天」或「超过 5 分钟没更新」就静默重拉。
 		// 否则手机挂后台一整夜，早上打开看到的还是昨天的任务。
-		if (this.useMock) return;
 		const dayChanged = this.todayText() !== this.lastFetchDay;
 		// 明日任务跟着日期走：一旦跨天，旧的那份就过期了
 		if (dayChanged) {
@@ -968,13 +645,7 @@ export default {
 
 		/* ---------------- 液态玻璃滑块 ---------------- */
 		thumbStyle(idx, stretch, press) {
-			return {
-				'--idx': String(idx),
-				'--sx': String(1 + stretch),
-				// 横向拉伸时纵向收一点，保持体积感
-				'--sy': String(1 - stretch * 0.42),
-				'--press': String(press || 1)
-			};
+			return sliderThumbStyle(idx, stretch, press);
 		},
 
 		/* 初始化两套弹簧（不放进 data，避免每帧触发响应式 diff 之外的额外开销） */
@@ -1063,24 +734,17 @@ export default {
 
 		// 文字激活度：距离滑块越近越亮（0~1）
 		tabActivity(cur, i) {
-			const d = Math.abs(cur - i);
-			return d >= 1 ? 0 : 1 - d;
+			return sliderTabActivity(cur, i);
 		},
 
 		// 把激活度翻译成颜色/字重样式（连续过渡，不用 class 硬切）
 		mixTxtStyle(a) {
-			return {
-				opacity: String(0.5 + 0.5 * a),
-				'font-weight': a > 0.5 ? '600' : '400',
-				transform: `scale(${(0.94 + 0.06 * a).toFixed(3)})`
-			};
+			return sliderMixTxtStyle(a);
 		},
 
 		// 边界阻尼：越界只保留 32% 位移，拉得动但出不去
 		dampIdx(raw, n) {
-			if (raw < 0) return raw * 0.32;
-			if (raw > n - 1) return (n - 1) + (raw - (n - 1)) * 0.32;
-			return raw;
+			return sliderDampIdx(raw, n);
 		},
 
 		touchX(e) {
@@ -1208,39 +872,6 @@ export default {
 			setTimeout(() => { this._suppressClick = false; }, 350);
 		},
 
-		// 带初速的弹簧吸附（复用 slideTo 的积分，但先注入初速）
-		_snapWithVelocity(kind, target, v0) {
-			const st = this._spring && this._spring[kind];
-			if (!st) return;
-			st.target = target;
-			st.v = v0;
-			if (typeof requestAnimationFrame !== 'function') {
-				this.applySlide(kind, target, 0, true);
-				st.x = target; st.v = 0;
-				return;
-			}
-			if (st.raf) cancelAnimationFrame(st.raf);
-			let last = 0;
-			const step = now => {
-				if (!last) last = now;
-				let dt = (now - last) / 1000; last = now;
-				if (!(dt > 0)) dt = 1 / 60;
-				if (dt > 0.04) dt = 0.04;
-				const accel = -420 * (st.x - st.target) - 27 * st.v;
-				st.v += accel * dt;
-				st.x += st.v * dt;
-				const stretch = Math.min(Math.abs(st.v) * 0.026, 0.14);
-				this.applySlide(kind, st.x, stretch);
-				if (Math.abs(st.v) < 0.03 && Math.abs(st.x - st.target) < 0.0015) {
-					this.applySlide(kind, st.target, 0, true);
-					st.x = st.target; st.v = 0; st.raf = 0;
-					return;
-				}
-				st.raf = requestAnimationFrame(step);
-			};
-			st.raf = requestAnimationFrame(step);
-		},
-
 		// seg 点击：拖完的 350ms 内抑制（避免拖拽后又触发 click 切回去）
 		onSegClick() {
 			if (this._suppressClick) return;
@@ -1318,53 +949,26 @@ export default {
 
 		// 明日任务：接口一次返回今天+明天，抽出明天的存起来，今天的顺手存档备份
 		fetchTomorrow() {
-			if (this.useMock) return;
 			const tomorrow = this.dayText(1);
 			const today = this.todayText();
 			this.tomorrowLoading = true;
-
-			uni.request({
-				url: this.mrUrl,
-				method: 'GET',
-				timeout: 12000,
-				success: res => {
-					let body = res && res.data;
-					if (typeof body === 'string') {
-						try {
-							body = JSON.parse(body);
-						} catch (e) {
-							body = null;
-						}
-					}
-					const list = body && body.data && body.data.task_list;
-					this.tomorrowLoading = false;
-					if (!Array.isArray(list) || !list.length) return;
-
-					// 按日期分组
-					const grouped = {};
-					list.forEach(item => {
-						if (!item || !item.date || !item.quest_cn) return;
-						(grouped[item.date] = grouped[item.date] || []).push({
-							text: this.cleanTaskText(item.quest_cn),
-							from: ''
-						});
-					});
-
+			return apiFetchTomorrow()
+				.then(r => {
+					if (!r || !r.ok) return;
+					const grouped = r.grouped || {};
 					const tmr = grouped[tomorrow] || [];
 					if (tmr.length) {
 						this.tomorrowTasks = tmr.map((t, i) => ({ id: i + 1, text: t.text, from: '' }));
 						this.saveArchiveFor(tomorrow, tmr);
 					}
 					this.tomorrowFetchedDay = today;
-					// 今天那一组也存一份（真实来源，接口挂掉时还有得看）
-					if (grouped[today] && grouped[today].length) {
-						this.saveArchiveFor(today, grouped[today]);
-					}
-				},
-				fail: () => {
+					// 主接口只给今天，这里顺手把今天那份也存档，昨天回看才有数据
+					if (grouped[today] && grouped[today].length) this.saveArchiveFor(today, grouped[today]);
+				})
+				.catch(() => {})
+				.then(() => {
 					this.tomorrowLoading = false;
-				}
-			});
+				});
 		},
 
 		/* ---------------- 主题切换 ---------------- */
@@ -1395,7 +999,7 @@ export default {
 			if (h >= 16 && h < 19) return 'dusk';
 			return 'night';
 		},
-		refreshPhase(h24) {
+		refreshPhase() {
 			const p = this.autoPhase();
 			if (p !== this.phase) this.phase = p;
 		},
@@ -1429,17 +1033,6 @@ export default {
 			// #endif
 		},
 
-		/* ---------------- Mock 渲染 ---------------- */
-		applyMock() {
-			this.tasks = this.mockTasks.map(item => Object.assign({}, item));
-			if (this.useMock) {
-				// 纯演示模式：没有真实接口，长图位显示占位文案
-				this.posterUrl = this.mockPoster;
-				this.posterError = false;
-				this.posterLoading = false;
-			}
-		},
-
 		/* ---------------- 整页刷新 ---------------- */
 		reloadPage() {
 			if (this.reloading) return;
@@ -1456,197 +1049,70 @@ export default {
 
 		/* ---------------- 下拉刷新 ---------------- */
 		refresh() {
-			if (this.useMock) {
-				// 模拟网络延迟，方便观察下拉刷新效果
-				setTimeout(() => {
-					this.applyMock();
-					uni.stopPullDownRefresh();
-					uni.showToast({ title: '已刷新', icon: 'none' });
-				}, 600);
-				return;
-			}
-			// 下拉刷新：两个接口同时重新拉取
+			// 下拉刷新：主数据依次重拉，由 api 层串行控速
 			this.fetchTasks(true);
 			this.fetchPoster(true);
 			this.fetchJinLa();
 		},
 
-		/* ---------------- 真实接口 ---------------- */
+		/* ---------------- 真实接口（统一走 api/sky.js） ---------------- */
+		// 文字任务：失败不再回退假数据，只提示并保留下拉刷新入口
 		fetchTasks(isPullDown, silent) {
 			if (!isPullDown && !silent) this.loading = true;
-
-			uni.request({
-				url: this.apiUrl,
-				method: 'GET',
-				data: { key: this.apiKey },
-				timeout: 10000,
-				success: res => {
-					// 记录拉取时间，供 onShow 判断数据是否过期
-					this.lastFetchAt = Date.now();
-					this.lastFetchDay = this.todayText();
-
-					// 该接口 Content-Type 为 text/json，部分环境会当成字符串返回，
-					// 这里统一解析一次，避免 body.rw 取不到而误回退 Mock。
-					let body = res && res.data;
-					if (typeof body === 'string') {
-						try {
-							body = JSON.parse(body);
-						} catch (e) {
-							body = null;
-						}
-					}
-					const rw = body && body.rw;
-
-					if (Array.isArray(rw) && rw.length) {
-						// 返回数据在 rw 数组的 text 字段
-						// ① 抹掉 #r 等格式控制符 ② 第 5 项「今日季节蜡烛所在地图」改到标题下方单独展示
-						this.tasks = rw
-							.map((item, i) => ({
-								id: i + 1,
-								text: this.cleanTaskText(item.text),
-								from: item.type || '每日任务'
-							}))
-							.filter(t => !/季节蜡烛|季蜡/.test(t.text));
+			return apiFetchTasks()
+				.then(r => {
+					if (r && r.ok) {
+						this.tasks = r.tasks;
+						this.lastFetchAt = Date.now();
+						this.lastFetchDay = this.todayText();
 						this.updatedAt = this.nowText();
-						// 存档一份，供以后「昨天」回看
 						this.saveArchive();
-						// 攻略图片由独立的 scrw 接口获取，这里不处理
-					} else {
-						uni.showToast({ title: this.apiErrMsg(body) + '，已回退 Mock', icon: 'none' });
-						this.applyMock();
+					} else if (!silent) {
+						uni.showToast({ title: (r && r.reason) || '任务获取失败，请下拉刷新', icon: 'none' });
 					}
-				},
-				fail: () => {
-					uni.showToast({ title: '网络异常，已回退 Mock', icon: 'none' });
-					this.applyMock();
-				},
-				complete: () => {
+				})
+				.catch(() => {})
+				.then(() => {
 					this.loading = false;
 					if (isPullDown) uni.stopPullDownRefresh();
-				}
-			});
+				});
 		},
 
-		/* 根据接口返回的 code / msg 生成更准确的错误提示，
-		 * 避免把「密钥失效」「请求过频」都笼统报成「数据格式异常」 */
-		apiErrMsg(body) {
-			const code = body && body.code;
-			const msg = String((body && body.msg) || '');
-			if (code === 403 || /密钥|key/i.test(msg)) return '接口密钥失效，需更新 key';
-			if (code === 429 || /频率|频繁/.test(msg)) return '请求太频繁，请稍后再试';
-			return '数据格式异常';
-		},
-
-		// 清理任务文本里的 #r 等控制符和多余空白
-		cleanTaskText(text) {
-			return String(text || '')
-				.replace(/#[a-zA-Z]/g, '')
-				.replace(/[\r\n]+/g, ' ')
-				.replace(/\s{2,}/g, ' ')
-				.trim();
-		},
-
-		// 季蜡位置：/sky/sc/lzwz → { jlwz:{text} }，格式化成「雨林（图1）」；接口无明日数据
+		// 季蜡位置：标题下方一行，失败就静默留空
 		fetchJinLa() {
-			uni.request({
-				url: API_BASE + '/sky/sc/lzwz',
-				method: 'GET',
-				data: { key: this.apiKey, type: 'json' },
-				timeout: 10000,
-				success: res => {
-					const body = this.safeJson(res && res.data) || {};
-					const raw = body.jlwz && body.jlwz.text ? String(body.jlwz.text).trim() : '';
-					this.jlToday = this.formatJl(raw);
-				},
-				fail: () => {
-					// 静默失败：标题下不显示这一行，任务列表照常
-				}
-			});
+			return apiFetchJinLa()
+				.then(r => {
+					if (r && r.ok) this.jlToday = r.text;
+				})
+				.catch(() => {});
 		},
 
-		formatJl(raw) {
-			if (!raw) return '';
-			const m = /^(.+?)(\d+)$/.exec(raw);
-			if (m) return m[1].trim() + '（图' + m[2] + '）';
-			return raw;
-		},
-
-		// 攻略图：scrw 返回 image/png 流，URL 本身即图片地址；探测响应头，兼容将来改返回 JSON
+		// 攻略长图：接口返回图片流时 URL 即图片地址
 		fetchPoster(isPullDown, silent) {
-			const url = this.scrwUrl + '?key=' + this.scrwKey;
-			// 静默刷新时不显示「长图加载中…」，避免切回前台闪一下占位文案
 			if (!silent) this.posterLoading = true;
 			this.posterError = false;
-
-			uni.request({
-				url: url,
-				method: 'GET',
-				responseType: 'arraybuffer', // 返回二进制图片，避免被当文本解析
-				timeout: 20000,
-				success: res => {
-					const header = res.header || {};
-					const ct = header['content-type'] || header['Content-Type'] || '';
-
-					if (ct.indexOf('image') > -1) {
-						// 图片流：接口地址本身就是可用图片地址
-						this.posterUrl = url;
-						this.posterError = false;
-						return;
-					}
-
-					// 兼容返回 JSON 的情况
-					let body = res.data;
-					if (typeof body === 'string') {
-						try {
-							body = JSON.parse(body);
-						} catch (e) {
-							body = null;
-						}
-					}
-
-					const real = this.pickImageUrl(body);
-					if (real) {
-						this.posterUrl = real;
+			return fetchPosterUrl()
+				.then(r => {
+					if (r && r.ok && r.url) {
+						this.posterUrl = r.url;
 						this.posterError = false;
 					} else {
 						this.posterError = true;
 					}
-				},
-				fail: () => {
-					// 请求失败时不覆盖已有图片，仅标记错误
+				})
+				.catch(() => {
 					this.posterError = true;
-				},
-				complete: () => {
+				})
+				.then(() => {
 					this.posterLoading = false;
 					if (isPullDown) uni.stopPullDownRefresh();
-				}
-			});
+				});
 		},
 
 		/* 长图加载失败后手动重试 */
 		retryPoster() {
 			this.posterError = false;
 			this.fetchPoster();
-		},
-
-		/* 从任意 JSON 结构中取出第一个 http(s) 图片地址 */
-		pickImageUrl(body) {
-			if (!body) return '';
-			if (typeof body === 'string') {
-				return /^https?:\/\//.test(body) ? body : '';
-			}
-			if (typeof body !== 'object') return '';
-
-			const keys = ['img', 'pic', 'image', 'imgUrl', 'imgurl', 'pimg', 'url', 'data', 'result'];
-			for (let i = 0; i < keys.length; i++) {
-				const v = body[keys[i]];
-				if (typeof v === 'string' && /^https?:\/\//.test(v)) return v;
-				if (v && typeof v === 'object') {
-					const inner = this.pickImageUrl(v);
-					if (inner) return inner;
-				}
-			}
-			return '';
 		},
 
 		/* ---------------- 长图预览 ---------------- */
@@ -1988,88 +1454,14 @@ export default {
 
 		// H5：原生 Canvas 2D 同步绘制 + toDataURL 导出，绕开 uni canvas 的异步回调
 		drawSharePosterH5(list) {
-			const L = this.measureShareLayout(list);
-			const canvas = document.createElement('canvas');
-			const ctx = canvas.getContext('2d');
-			if (!ctx) throw new Error('canvas 2d unavailable');
-			const W = L.W, H = L.H, PAD = L.PAD, cardH = L.cardH;
-			canvas.width = W;
-			canvas.height = H;
-
-			const bg = ctx.createLinearGradient(0, 0, 0, H);
-			bg.addColorStop(0, '#0B0E1A');
-			bg.addColorStop(1, '#141B31');
-			ctx.fillStyle = bg;
-			ctx.fillRect(0, 0, W, H);
-
-			const blob = (x, y, r, c0) => {
-				const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-				g.addColorStop(0, c0);
-				g.addColorStop(1, 'rgba(0,0,0,0)');
-				ctx.fillStyle = g;
-				ctx.fillRect(x - r, y - r, r * 2, r * 2);
-			};
-			blob(90, 120, 260, 'rgba(96,128,255,0.35)');
-			blob(520, 320, 240, 'rgba(156,92,232,0.28)');
-			blob(300, H - 160, 260, 'rgba(0,188,214,0.20)');
-
-			const FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
-			const fs = n => { ctx.font = n + 'px ' + FONT; };
-			ctx.textBaseline = 'middle';
-			fs(24); ctx.fillStyle = 'rgba(127,214,255,0.9)';
-			ctx.fillText('光遇每日任务', PAD + 6, 56);
-			fs(44); ctx.fillStyle = '#F2F4F8';
-			ctx.fillText(L.dateText, PAD + 6, 104);
-			const dateW = ctx.measureText(L.dateText).width;
-			fs(24); ctx.fillStyle = 'rgba(242,244,248,0.55)';
-			ctx.fillText(L.week, PAD + 10 + dateW + 60, 104);
-
-			const cardY = 150, cardX = 24, cardW = W - 48, R = 24;
-			ctx.beginPath();
-			ctx.moveTo(cardX + R, cardY);
-			ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, R);
-			ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, R);
-			ctx.arcTo(cardX, cardY + cardH, cardX, cardY, R);
-			ctx.arcTo(cardX, cardY, cardX + cardW, cardY, R);
-			ctx.closePath();
-			ctx.fillStyle = 'rgba(255,255,255,0.06)';
-			ctx.fill();
-			ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-			ctx.lineWidth = 1;
-			ctx.stroke();
-
-			let y = cardY + PAD + 15;
-			L.tasks.forEach((t, i) => {
-				const bx = cardX + PAD + 16;
-				ctx.beginPath();
-				ctx.arc(bx, y + 2, 15, 0, Math.PI * 2);
-				ctx.fillStyle = 'rgba(127,214,255,0.16)';
-				ctx.fill();
-				fs(16); ctx.fillStyle = '#7FD6FF';
-				ctx.textAlign = 'center';
-				ctx.fillText(String(i + 1), bx, y + 2);
-				ctx.textAlign = 'left';
-				fs(22); ctx.fillStyle = 'rgba(242,244,248,0.92)';
-				t.lines.forEach((ln, j) => {
-					ctx.fillText(ln, cardX + PAD + 46, y + j * 30 + 2);
-				});
-				y += Math.max(30, t.lines.length * 30) + 20;
-			});
-
-			if (L.hasJl) {
-				fs(20); ctx.fillStyle = '#B49BFF';
-				ctx.fillText('今日季蜡 · ' + this.jlToday, cardX + PAD + 6, y + 4);
+			try {
+				const dataUrl = paintShareH5(this.measureShareLayout(list), this.jlToday);
+				clearTimeout(this._shareTimer);
+				this.sharing = false;
+				this.showPosterPreview(dataUrl);
+			} catch (e) {
+				this.shareFailed();
 			}
-
-			fs(22); ctx.fillStyle = 'rgba(242,244,248,0.45)';
-			ctx.textAlign = 'center';
-			ctx.fillText('@冰块', W / 2, H - 34);
-			ctx.textAlign = 'left';
-
-			const dataUrl = canvas.toDataURL('image/png');
-			this.sharing = false;
-			clearTimeout(this._shareTimer);
-			this.showPosterPreview(dataUrl);
 		},
 
 		// H5：原生全屏预览，base64 直接塞进 img，绕开 uni.previewImage 对 dataURL 的限制
@@ -2105,53 +1497,7 @@ export default {
 
 		/* 量出每条任务要占几行，顺便把画布总高、日期文案一并算好 */
 		measureShareLayout(list) {
-			let ctx;
-			// #ifdef H5
-			const _c = document.createElement('canvas');
-			ctx = _c.getContext('2d');
-			// #endif
-			// #ifndef H5
-			ctx = uni.createCanvasContext('shareCanvas', this);
-			// #endif
-			const W = 600, PAD = 26, TEXT_W = W - PAD * 2 - 46;
-			// 量宽度：measureText 不可用时退化为「字数 × 字号」估算
-			const measure = (text, size) => {
-				try {
-					if (!ctx) return String(text).length * size;
-					if (typeof ctx.setFontSize === 'function') ctx.setFontSize(size);
-					else ctx.font = size + 'px sans-serif';
-					const w = ctx.measureText(String(text)).width;
-					if (w > 0) return w;
-				} catch (e) { /* 走估算 */ }
-				return String(text).length * size;
-			};
-			const wrap = (text, size, maxW) => {
-				const lines = [];
-				let line = '';
-				for (const ch of String(text)) {
-					if (line && measure(line + ch, size) > maxW) {
-						lines.push(line);
-						line = ch;
-					} else {
-						line += ch;
-					}
-				}
-				if (line) lines.push(line);
-				return lines.length ? lines : [''];
-			};
-
-			const d = new Date();
-			d.setDate(d.getDate() + this.dayOffset);
-			const hasJl = this.dayOffset === 0 && !!this.jlToday;
-			const tasks = list.map(t => ({ text: t.text, lines: wrap(t.text, 22, TEXT_W) }));
-			const tasksH = tasks.reduce((s, t) => s + Math.max(30, t.lines.length * 30) + 20, 0);
-			const cardH = PAD * 2 + tasksH + (hasJl ? 44 : 0);
-			const H = Math.round(150 + cardH + 36 + 60);
-			return {
-				W, H, PAD, cardH, tasks, hasJl,
-				dateText: (d.getMonth() + 1) + '月' + d.getDate() + '日',
-				week: '星期' + '日一二三四五六'[d.getDay()]
-			};
+			return measureShareLayoutImpl(list, { dayOffset: this.dayOffset, jlToday: this.jlToday });
 		},
 
 		/* 真正绘制并导出 */
@@ -2162,89 +1508,8 @@ export default {
 				return;
 			}
 			const ctx = uni.createCanvasContext('shareCanvas', this);
-			const { W, H, PAD, cardH } = L;
-
-			/* 背景：深夜蓝渐变 */
-			const bg = ctx.createLinearGradient(0, 0, 0, H);
-			bg.addColorStop(0, '#0B0E1A');
-			bg.addColorStop(1, '#141B31');
-			ctx.setFillStyle(bg);
-			ctx.fillRect(0, 0, W, H);
-
-			/* 光斑：三团彩色径向渐变，对应页面里的 blob 光斑 */
-			const blob = (x, y, r, c0) => {
-				const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-				g.addColorStop(0, c0);
-				g.addColorStop(1, 'rgba(0,0,0,0)');
-				ctx.setFillStyle(g);
-				ctx.fillRect(x - r, y - r, r * 2, r * 2);
-			};
-			blob(90, 120, 260, 'rgba(96,128,255,0.35)');
-			blob(520, 320, 240, 'rgba(156,92,232,0.28)');
-			blob(300, H - 160, 260, 'rgba(0,188,214,0.20)');
-
-			/* 顶部：小标 + 大日期 + 星期 */
-			ctx.setTextBaseline('middle');
-			ctx.setFontSize(24);
-			ctx.setFillStyle('rgba(127,214,255,0.9)');
-			ctx.fillText('光遇每日任务', PAD + 6, 56);
-			ctx.setFontSize(44);
-			ctx.setFillStyle('#F2F4F8');
-			ctx.fillText(L.dateText, PAD + 6, 104);
-			ctx.setFontSize(24);
-			ctx.setFillStyle('rgba(242,244,248,0.55)');
-			ctx.fillText(L.week, PAD + 10 + ctx.measureText(L.dateText).width + 60, 104);
-
-			/* 玻璃卡片：半透明白 + 细描边，和页面里的 .glass 一个味道 */
-			const cardY = 150, cardX = 24, cardW = W - 48, R = 24;
-			ctx.beginPath();
-			ctx.moveTo(cardX + R, cardY);
-			ctx.arcTo(cardX + cardW, cardY, cardX + cardW, cardY + cardH, R);
-			ctx.arcTo(cardX + cardW, cardY + cardH, cardX, cardY + cardH, R);
-			ctx.arcTo(cardX, cardY + cardH, cardX, cardY, R);
-			ctx.arcTo(cardX, cardY, cardX + cardW, cardY, R);
-			ctx.closePath();
-			ctx.setFillStyle('rgba(255,255,255,0.06)');
-			ctx.fill();
-			ctx.setStrokeStyle('rgba(255,255,255,0.16)');
-			ctx.setLineWidth(1);
-			ctx.stroke();
-
-			/* 任务列表：序号徽章 + 自动换行文案 */
-			let y = cardY + PAD + 15;
-			L.tasks.forEach((t, i) => {
-				const bx = cardX + PAD + 16;
-				ctx.beginPath();
-				ctx.arc(bx, y + 2, 15, 0, Math.PI * 2);
-				ctx.setFillStyle('rgba(127,214,255,0.16)');
-				ctx.fill();
-				ctx.setFontSize(16);
-				ctx.setFillStyle('#7FD6FF');
-				ctx.setTextAlign('center');
-				ctx.fillText(String(i + 1), bx, y + 2);
-				ctx.setTextAlign('left');
-
-				ctx.setFontSize(22);
-				ctx.setFillStyle('rgba(242,244,248,0.92)');
-				t.lines.forEach((ln, j) => {
-					ctx.fillText(ln, cardX + PAD + 46, y + j * 30 + 2);
-				});
-				y += Math.max(30, t.lines.length * 30) + 20;
-			});
-
-			/* 季蜡位置：只有今天有数据才画 */
-			if (L.hasJl) {
-				ctx.setFontSize(20);
-				ctx.setFillStyle('#B49BFF');
-				ctx.fillText('今日季蜡 · ' + this.jlToday, cardX + PAD + 6, y + 4);
-			}
-
-			/* 底部水印 */
-			ctx.setFontSize(22);
-			ctx.setFillStyle('rgba(242,244,248,0.45)');
-			ctx.setTextAlign('center');
-			ctx.fillText('@冰块', W / 2, H - 34);
-			ctx.setTextAlign('left');
+			// 绘制细节在 utils/share-poster.js，页面只管取 canvas 与导出
+			paintShareNative(ctx, L, this.jlToday);
 
 			/* 导出：draw 完成后转临时文件，再复用现有的大图预览 */
 			ctx.draw(false, () => {
@@ -2268,62 +1533,47 @@ export default {
 		},
 
 		// 实时时钟：每拍取系统时间，rAF 驱动，切后台暂停、回前台自动对齐
+		// 实时时钟：1s 定时器驱动，只在秒变化时刷新（rAF 常驻会白耗电）
 		startClock() {
 			this.stopClock();
 			this.tickClock(true);
-
-			if (typeof requestAnimationFrame === 'function') {
-				const loop = () => {
-					this.tickClock();
-					this._clockRaf = requestAnimationFrame(loop);
-				};
-				this._clockRaf = requestAnimationFrame(loop);
-			} else {
-				// 非浏览器环境（小程序 / App）退回 1s 定时器，逻辑同样是每次取真实时间
-				this.clockTimer = setInterval(() => this.tickClock(true), 1000);
-			}
-
+			this.clockTimer = setInterval(() => this.tickClock(), 1000);
+			// #ifdef H5
 			if (typeof document !== 'undefined' && document.addEventListener) {
-				this._visHandler = () => {
+				this.visHandler = () => {
 					if (!document.hidden) this.tickClock(true);
 				};
-				document.addEventListener('visibilitychange', this._visHandler);
+				document.addEventListener('visibilitychange', this.visHandler);
 			}
+			// #endif
 		},
 
 		stopClock() {
-			if (this._clockRaf && typeof cancelAnimationFrame === 'function') {
-				cancelAnimationFrame(this._clockRaf);
-			}
-			this._clockRaf = 0;
 			if (this.clockTimer) {
 				clearInterval(this.clockTimer);
 				this.clockTimer = 0;
 			}
-			if (this._visHandler && typeof document !== 'undefined') {
-				document.removeEventListener('visibilitychange', this._visHandler);
-				this._visHandler = null;
+			// #ifdef H5
+			if (this.visHandler && typeof document !== 'undefined' && document.removeEventListener) {
+				document.removeEventListener('visibilitychange', this.visHandler);
+				this.visHandler = null;
 			}
+			// #endif
 		},
 
 		/* force = true 时强制重算（切前台、页面显示），平时只在整秒变化时才写数据，
 		 * 避免 rAF 每帧都触发一次视图更新 */
 		tickClock(force) {
-			const now = new Date();
-			const sec = Math.floor(now.getTime() / 1000);
-			if (!force && sec === this.clockLastSec) return;
+			const d = new Date();
+			const sec = d.getSeconds();
+			if (!force && sec === this.clockLastSec) return; // 秒没变就不渲染
 			this.clockLastSec = sec;
-
-			const h24 = now.getHours();
+			const h24 = d.getHours();
 			const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
 			const p2 = n => (n < 10 ? '0' + n : '' + n);
 			this.clockMer = h24 < 12 ? '上午' : '下午';
-			this.clockTime = p2(h12) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
-
-			// 背景时段随时钟切换
-			this.refreshPhase(h24);
-
-			// 倒计时与时钟同步更新
+			this.clockTime = p2(h12) + ':' + p2(d.getMinutes()) + ':' + p2(sec);
+			this.refreshPhase();
 			this.tickRefresh();
 		},
 
@@ -2336,275 +1586,6 @@ export default {
 			const h = Math.floor(totalMin / 60);
 			const m = totalMin % 60;
 			this.refreshTip = h > 0 ? `距刷新 ${h}小时${m}分` : `距刷新 ${m}分`;
-		},
-
-		/* ---------------- 娱乐抽屉：摸小猫 / 抽签 / 答案之书 ---------------- */
-		openPlay() {
-			this.playView = 'list';
-			this.playOpen = true;
-		},
-
-		closePlay() {
-			this.playOpen = false;
-		},
-
-		playTo(view) {
-			this.playView = view;
-		},
-
-		playBack() {
-			this.playView = 'list';
-		},
-
-		/* ---------------- 摸小猫 ---------------- */
-		/* 切换花色：点一下左上角色块，猫的毛色/斑纹跟着变 */
-		pickCoat(key) {
-			if (this.catCoat === key) return;
-			this.catCoat = key;
-			this.buzz();
-		},
-
-		/* 摸一下：本地累加 + 喷一把爱心 + 眯眼蹭蹭 + 震动 + 合成呼噜声，不发任何请求 */
-		patCat() {
-			this.catCount = this.catCount + 1;
-
-			// 一次冒出 5~7 颗爱心，随机横向位置/大小/旋转/延迟，飘上去后自动回收
-			const n = 5 + Math.floor(Math.random() * 3);
-			for (let i = 0; i < n; i++) {
-				const id = ++this.catSeq;
-				this.catHearts.push({
-					id,
-					x: Math.round((Math.random() * 2 - 1) * 130),
-					y: 120 + Math.round(Math.random() * 60),
-					size: 26 + Math.round(Math.random() * 26),
-					rot: Math.round((Math.random() * 2 - 1) * 34),
-					delay: Math.round(Math.random() * 160)
-				});
-				setTimeout(() => {
-					this.catHearts = this.catHearts.filter(h => h.id !== id);
-				}, 1500 + Math.round(Math.random() * 300));
-			}
-
-			// 被摸反馈：眯眼 + 身体缩一下再弹回，连点时先复位再重新触发动画
-			this.catHit = false;
-			this.$nextTick(() => {
-				this.catHit = true;
-				setTimeout(() => {
-					this.catHit = false;
-				}, 380);
-			});
-
-			this.purr();
-			this.buzz();
-		},
-
-		// 首次触摸时建好 AudioContext（浏览器要求手势后才能出声），失败就静音
-		ensureAudio() {
-			try {
-				if (typeof window === 'undefined') return;
-				const AC = window.AudioContext || window.webkitAudioContext;
-				if (!AC) return;
-				if (!this._ac) this._ac = new AC();
-				if (this._ac.state === 'suspended' && this._ac.resume) this._ac.resume();
-			} catch (e) {
-				// 被策略拦下 / 浏览器不支持：保持静音
-			}
-		},
-
-		// 现场合成一记轻柔的「呼噜~」：低频三角波 + 缓慢颤音(LFO)，像猫被摸舒服了
-		purr() {
-			try {
-				this.ensureAudio();
-				const ac = this._ac;
-				if (!ac) return;
-				if (ac.state === 'suspended' && ac.resume) ac.resume();
-				const t = ac.currentTime;
-
-				// 基音：240Hz 三角波，柔和起落，400ms 结束
-				const osc = ac.createOscillator();
-				osc.type = 'triangle';
-				osc.frequency.setValueAtTime(240, t);
-				osc.frequency.linearRampToValueAtTime(205, t + 0.4);
-				const g = ac.createGain();
-				g.gain.setValueAtTime(0.0001, t);
-				g.gain.exponentialRampToValueAtTime(0.22, t + 0.05);
-				g.gain.setValueAtTime(0.22, t + 0.22);
-				g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
-
-				// 颤音 LFO：26Hz 调制音量，制造"呼噜噜"的颗粒感
-				const lfo = ac.createOscillator();
-				lfo.type = 'sine';
-				lfo.frequency.value = 26;
-				const lfoGain = ac.createGain();
-				lfoGain.gain.value = 0.12;
-				lfo.connect(lfoGain);
-				lfoGain.connect(g.gain);
-
-				osc.connect(g);
-				g.connect(ac.destination);
-				osc.start(t);
-				lfo.start(t);
-				osc.stop(t + 0.46);
-				lfo.stop(t + 0.46);
-			} catch (e) {
-				// 不支持或被拦截时静音，不影响计数
-			}
-		},
-
-		/* ---------------- 计算器（纯本地） ---------------- */
-		calcPress(k) {
-			if (k === 'C') {
-				this.calcClear();
-				return;
-			}
-			if (k === '⌫') {
-				this.calcBack();
-				return;
-			}
-			if (k === '=') {
-				this.calcEqual();
-				return;
-			}
-			if (k === '.' || /^[0-9]$/.test(k)) {
-				this.calcDigit(k);
-				return;
-			}
-			this.calcOperator(k);
-		},
-
-		calcDigit(k) {
-			if (this.calcErr) this.calcClear();
-			if (this.calcFresh) {
-				this.calcInput = k === '.' ? '0.' : k;
-				this.calcFresh = false;
-				return;
-			}
-			if (k === '.') {
-				if (this.calcInput.indexOf('.') >= 0) return;
-				this.calcInput = this.calcInput + '.';
-				return;
-			}
-			if (this.calcInput === '0') {
-				this.calcInput = k;
-				return;
-			}
-			if (this.calcInput.replace(/[-.]/g, '').length >= 12) return;
-			this.calcInput = this.calcInput + k;
-		},
-
-		calcOperator(op) {
-			if (this.calcErr) return;
-			const cur = parseFloat(this.calcInput);
-			const val = isNaN(cur) ? 0 : cur;
-
-			// 已经有挂起运算符且输入了新数字 → 先算一步（连续按运算符则只换符号）
-			if (this.calcOp && !this.calcFresh) {
-				const r = this.calcApply(this.calcAcc, val, this.calcOp);
-				if (r === null) return;
-				this.calcAcc = r;
-				this.calcInput = this.calcFmt(r);
-			} else if (this.calcAcc === null) {
-				this.calcAcc = val;
-			}
-
-			this.calcOp = op;
-			this.calcFresh = true;
-			this.calcExpr = this.calcFmt(this.calcAcc) + ' ' + op;
-		},
-
-		calcEqual() {
-			if (this.calcErr || !this.calcOp) return;
-			const cur = parseFloat(this.calcInput);
-			const val = isNaN(cur) ? 0 : cur;
-			const r = this.calcApply(this.calcAcc, val, this.calcOp);
-			if (r === null) return;
-			this.calcExpr = this.calcFmt(this.calcAcc) + ' ' + this.calcOp + ' ' + this.calcFmt(val) + ' =';
-			this.calcInput = this.calcFmt(r);
-			this.calcAcc = null;
-			this.calcOp = '';
-			this.calcFresh = true;
-		},
-
-		calcApply(a, b, op) {
-			let r = 0;
-			if (op === '+') r = a + b;
-			else if (op === '−') r = a - b;
-			else if (op === '×') r = a * b;
-			else if (op === '÷') {
-				if (b === 0) {
-					this.calcErr = true;
-					this.calcExpr = this.calcFmt(a) + ' ÷ 0';
-					this.calcAcc = null;
-					this.calcOp = '';
-					this.calcFresh = true;
-					return null;
-				}
-				r = a / b;
-			}
-			// 抹掉 0.1+0.2=0.30000000000000004 这种浮点尾巴
-			return Math.round(r * 1e10) / 1e10;
-		},
-
-		calcFmt(v) {
-			if (!isFinite(v)) return '0';
-			const n = Math.round(v * 1e10) / 1e10;
-			const s = String(n);
-			if (s.replace(/[-.]/g, '').length > 12) return n.toExponential(6);
-			return s;
-		},
-
-		calcClear() {
-			this.calcInput = '0';
-			this.calcAcc = null;
-			this.calcOp = '';
-			this.calcFresh = true;
-			this.calcErr = false;
-			this.calcExpr = '';
-		},
-
-		calcBack() {
-			if (this.calcErr) {
-				this.calcClear();
-				return;
-			}
-			if (this.calcFresh) return;
-			let s = this.calcInput.slice(0, -1);
-			if (s === '' || s === '-') s = '0';
-			this.calcInput = s;
-		},
-
-		/* 光遇抽签：从本地签池随机 */
-		drawSign() {
-			if (this.signRolling) return;
-			this.signRolling = true;
-			this.signResult = null;
-			this.buzz();
-			setTimeout(() => {
-				const pool = this.signPool;
-				this.signResult = pool[Math.floor(Math.random() * pool.length)];
-				this.signRolling = false;
-			}, 420);
-		},
-
-		/* 答案之书：从本地方案池随机 */
-		drawAnswer() {
-			if (this.answerRolling) return;
-			this.answerRolling = true;
-			this.answerText = '';
-			setTimeout(() => {
-				const pool = this.answerPool;
-				this.answerText = pool[Math.floor(Math.random() * pool.length)];
-				this.answerRolling = false;
-			}, 460);
-		},
-
-		/* 轻震动：H5 需系统允许，失败就静默忽略，不影响任何逻辑 */
-		buzz() {
-			try {
-				uni.vibrateShort({ type: 'light', fail: () => {} });
-			} catch (e) {
-				// 不支持震动的设备直接跳过
-			}
 		},
 
 		nowText() {
@@ -2662,7 +1643,7 @@ export default {
 				return;
 			}
 
-			const url = cfg.img + '?key=' + this.apiKey;
+			const url = withKey(cfg.img);
 			g.url = url;
 
 			// 复刻先祖：休赛期返回「已结束」白底占位图，先判定再决定要不要展示
@@ -2686,39 +1667,30 @@ export default {
 		/* 红石天气：{ data: [jpg, gif] }，gif 是点赞贴纸，必须过滤 */
 		fetchGuideJson(i, url) {
 			const g = this.guides[i];
-			uni.request({
-				url,
-				method: 'GET',
-				data: { key: this.apiKey },
-				timeout: 12000,
-				success: res => {
-					const body = this.safeJson(res && res.data) || {};
-					const list = Array.isArray(body.data) ? body.data : [];
-					const all = list.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
-					// 优先 jpg/png/webp；只剩 gif 说明当天只返回了表情贴纸
-					const usable = all.filter(u => !/\.gif(\?|$)/i.test(u));
-
-					if (usable.length) {
-						g.url = usable[0];
+			if (!g) return Promise.resolve();
+			if (g.status === 'closed') return Promise.resolve(); // 已判定本期结束，不再覆盖
+			return apiFetchGuideJson(url)
+				.then(r => {
+					if (r && r.ok) {
+						g.url = r.image;
 						g.desc = '今日天气 + 红石碎片';
 						g.status = 'ok';
 						return;
 					}
-					if (all.length) {
-						// 兜底：没有可用图 → 「今日暂无」，这是正常状态不是报错
+					if (r && r.empty) {
+						// 只有贴纸图属于「今日暂无」，是正常状态不是报错
 						g.status = 'empty';
 						g.desc = '今日暂无红石/黑石';
-						g.err = '接口只返回了贴纸图';
+						g.err = r.reason || '';
 						return;
 					}
 					g.status = 'error';
-					g.err = '接口返回内容为空';
-				},
-				fail: () => {
+					g.err = (r && r.reason) || '网络异常，请重试';
+				})
+				.catch(() => {
 					g.status = 'error';
 					g.err = '网络异常，请重试';
-				}
-			});
+				});
 		},
 
 		onGuideImgLoad(i) {
@@ -2788,29 +1760,13 @@ export default {
 
 		/* 副标题预取：文字接口只有几百字节，先拿到卡片上就能直接显示「雨林1」「烟花魔法」 */
 		prefetchGuideTexts() {
-			uni.request({
-				url: GUIDE_API.jl.text,
-				method: 'GET',
-				data: { key: this.apiKey },
-				timeout: 10000,
-				success: res => {
-					const b = this.safeJson(res && res.data) || {};
-					const jl = b.jlwz && b.jlwz.text ? b.jlwz.text : '';
-					const dl = b.dlwz && b.dlwz.text ? b.dlwz.text : '';
-					if (jl) this.setGuideDesc('jl', dl ? `季蜡 ${jl} · 大蜡 ${dl}` : `季蜡 ${jl}`);
-				}
-			});
-			uni.request({
-				url: GUIDE_API.mf.text,
-				method: 'GET',
-				data: { key: this.apiKey },
-				timeout: 10000,
-				success: res => {
-					const b = this.safeJson(res && res.data) || {};
-					const m = b.magic && b.magic[0] && b.magic[0].text ? b.magic[0].text : '';
-					if (m) this.setGuideDesc('mf', m);
-				}
-			});
+			return apiFetchGuideTexts()
+				.then(r => {
+					if (!r) return;
+					if (r.jl) this.setGuideDesc('jl', r.dl ? `季蜡 ${r.jl} · 大蜡 ${r.dl}` : `季蜡 ${r.jl}`);
+					if (r.magic) this.setGuideDesc('mf', r.magic);
+				})
+				.catch(() => {});
 		},
 
 		setGuideDesc(key, desc) {
@@ -2823,7 +1779,7 @@ export default {
 		precheckEndedGuide() {
 			const g = this.guides.find(x => x.key === 'fk');
 			if (!g) return;
-			const url = GUIDE_API.fk.img + '?key=' + this.apiKey;
+			const url = withKey(GUIDE_API.fk.img);
 			this.detectEndedPoster(url).then(ended => {
 				if (!ended || g.status === 'ok') return;
 				g.status = 'closed';
@@ -2832,18 +1788,6 @@ export default {
 		},
 
 		/* 接口偶尔返回 text/json，统一解析一次 */
-		safeJson(data) {
-			if (!data) return null;
-			if (typeof data === 'object') return data;
-			if (typeof data === 'string') {
-				try {
-					return JSON.parse(data);
-				} catch (e) {
-					return null;
-				}
-			}
-			return null;
-		}
 		// #endif
 	}
 };
@@ -4103,614 +3047,4 @@ export default {
 	transition: color 0.45s;
 }
 
-/* ---------- 娱乐悬浮球 ---------- */
-/* 位置：右侧固定，距底 244rpx。一键复制按钮在文档流里，页面滑到底时
-   按钮占据距底 124rpx ~ 224rpx 这一段，所以球体（244 ~ 348rpx）落在
-   按钮正上方，留 20rpx 空隙，既不遮按钮也不误触。z-index 低于所有弹层。 */
-.play-fab {
-	position: fixed;
-	right: 28rpx;
-	bottom: calc(env(safe-area-inset-bottom) + 244rpx);
-	z-index: 70;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 104rpx;
-	height: 104rpx;
-	border-radius: 50%;
-	transition: transform 0.16s ease, opacity 0.16s ease;
-}
-
-.play-fab-active {
-	transform: scale(0.94);
-	opacity: 0.9;
-}
-
-.play-fab-txt {
-	font-size: 32rpx;
-	font-weight: 600;
-	letter-spacing: 2rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-/* ---------- 娱乐抽屉 ---------- */
-.play-mask {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	z-index: 90;
-	display: flex;
-	flex-direction: column;
-	justify-content: flex-end;
-	background-color: rgba(0, 0, 0, 0.42);
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.28s ease;
-}
-
-.play-mask-on {
-	opacity: 1;
-	pointer-events: auto;
-}
-
-.play-drawer {
-	display: flex;
-	flex-direction: column;
-	width: 100%;
-	max-height: 86vh;
-	overflow-y: auto;
-	padding: 14rpx 32rpx calc(30rpx + env(safe-area-inset-bottom));
-	box-sizing: border-box;
-	border-radius: 44rpx 44rpx 0 0;
-	/* 上滑带一点过冲，像被手指弹出来的液态玻璃 */
-	transform: translate3d(0, 104%, 0) scale(0.98);
-	transition: transform 0.46s cubic-bezier(0.22, 1.32, 0.36, 1);
-	will-change: transform;
-}
-
-.play-drawer-on {
-	transform: translate3d(0, 0, 0) scale(1);
-}
-
-.play-grip {
-	width: 72rpx;
-	height: 8rpx;
-	margin: 0 auto 16rpx;
-	border-radius: 999rpx;
-	background-color: var(--text);
-	opacity: 0.16;
-}
-
-.play-head {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: space-between;
-	min-height: 56rpx;
-	margin-bottom: 20rpx;
-}
-
-.play-back,
-.play-close {
-	flex-shrink: 0;
-	width: 110rpx;
-}
-
-.play-close {
-	text-align: right;
-}
-
-.play-back-txt {
-	font-size: 24rpx;
-	letter-spacing: 1rpx;
-	color: var(--accent);
-}
-
-.play-close-txt {
-	font-size: 24rpx;
-	letter-spacing: 1rpx;
-	color: var(--text-faint);
-}
-
-.play-title {
-	flex: 1;
-	text-align: center;
-	font-size: 30rpx;
-	font-weight: 600;
-	letter-spacing: 2rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-/* 入口列表 */
-.play-list {
-	display: flex;
-	flex-direction: column;
-}
-
-.play-item {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-bottom: 16rpx;
-	padding: 22rpx 24rpx;
-	border-radius: 30rpx;
-	border: 1rpx solid var(--glass-bd);
-	background-color: rgba(255, 255, 255, 0.10);
-	transition: transform 0.18s ease, background-color 0.2s ease;
-}
-
-.play-item:active {
-	transform: scale(0.988);
-	background-color: rgba(255, 255, 255, 0.16);
-}
-
-.play-icon {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 76rpx;
-	height: 76rpx;
-	border-radius: 26rpx;
-	background-image: linear-gradient(150deg, var(--btn-a) 0%, var(--btn-b) 100%);
-	box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
-}
-
-.play-icon-txt {
-	font-size: 28rpx;
-	font-weight: 600;
-	color: var(--btn-txt);
-}
-
-.play-item-info {
-	display: flex;
-	flex-direction: column;
-	flex: 1;
-	min-width: 0;
-	margin-left: 20rpx;
-}
-
-.play-item-name {
-	font-size: 27rpx;
-	font-weight: 600;
-	letter-spacing: 1rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-.play-item-desc {
-	margin-top: 6rpx;
-	font-size: 21rpx;
-	color: var(--text-faint);
-	transition: color 0.45s;
-}
-
-.play-arrow {
-	margin-left: 12rpx;
-	font-size: 34rpx;
-	line-height: 1;
-	color: var(--text-faint);
-}
-
-/* 子视图通用 */
-.play-body {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	padding: 6rpx 0 4rpx;
-}
-
-.play-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 100%;
-	height: 92rpx;
-	margin-top: 32rpx;
-	border-radius: 999rpx;
-	background-image: linear-gradient(180deg, var(--btn-a) 0%, var(--btn-b) 100%);
-	box-shadow: 0 8px 22px rgba(10, 60, 140, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.5);
-	transition: transform 0.16s ease, opacity 0.16s ease;
-}
-
-.play-btn-active {
-	transform: scale(0.975);
-	opacity: 0.9;
-}
-
-.play-btn-txt {
-	font-size: 28rpx;
-	font-weight: 600;
-	letter-spacing: 4rpx;
-	color: var(--btn-txt);
-}
-
-/* ---------- 摸小猫：实拍照片 + 花色切换 + 爱心动画 ---------- */
-.cat-stage {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	width: 100%;
-	height: 430rpx;
-}
-
-/* 左上角色选择器：毛玻璃小胶囊 */
-.cat-coatbar {
-	position: relative;
-	z-index: 3;
-	display: flex;
-	align-items: center;
-	align-self: flex-start;
-	height: 54rpx;
-	padding: 0 16rpx;
-	margin-bottom: 6rpx;
-	border-radius: 999rpx;
-	background-color: rgba(255, 255, 255, 0.5);
-	border: 1rpx solid var(--glass-bd);
-	-webkit-backdrop-filter: blur(16px) saturate(190%);
-	backdrop-filter: blur(16px) saturate(190%);
-	box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.8), 0 3rpx 12rpx rgba(90, 80, 140, 0.10);
-}
-
-.cat-coat-label {
-	font-size: 20rpx;
-	color: var(--text-dim);
-	letter-spacing: 1rpx;
-	margin-right: 12rpx;
-}
-
-.cat-coat-dots {
-	display: flex;
-	align-items: center;
-	gap: 10rpx;
-}
-
-.cat-coat-dot {
-	width: 30rpx;
-	height: 30rpx;
-	border-radius: 50%;
-	box-sizing: border-box;
-	border: 3rpx solid rgba(255, 255, 255, 0.85);
-	box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.18);
-	transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
-}
-
-.cat-dot-orange  { background-image: linear-gradient(145deg, #FFC078 0%, #F08C3C 100%); }
-.cat-dot-siamese { background-image: linear-gradient(145deg, #E8D5B7 0%, #5A4638 100%); }
-.cat-dot-calico  { background-image: linear-gradient(135deg, #FFFFFF 0%, #F5A65B 50%, #4A4038 100%); }
-.cat-dot-cow     { background-image: linear-gradient(145deg, #FFFFFF 0%, #2B2B30 100%); }
-
-.cat-dot-on {
-	transform: scale(1.28);
-	box-shadow: 0 0 0 3rpx var(--cat-ink), 0 3rpx 10rpx rgba(0, 0, 0, 0.24);
-}
-
-.cat-coat-name {
-	font-size: 20rpx;
-	font-weight: 600;
-	color: var(--cat-ink);
-	letter-spacing: 1rpx;
-	margin-left: 14rpx;
-	min-width: 76rpx;
-}
-
-/* 抚摸瞬间从猫头身后荡开的柔光圈 */
-.cat-halo {
-	position: absolute;
-	top: 48%;
-	left: 50%;
-	width: 380rpx;
-	height: 380rpx;
-	border-radius: 50%;
-	background-image: radial-gradient(circle, var(--cat-halo) 0%, rgba(255, 255, 255, 0) 66%);
-	opacity: 0;
-	transform: translate(-50%, -50%) scale(0.72);
-	transition: opacity 0.4s ease, transform 0.4s ease;
-	pointer-events: none;
-}
-
-.cat-halo-on {
-	opacity: 1;
-	transform: translate(-50%, -50%) scale(1.06);
-	transition: opacity 0.08s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* 猫头照片：四角柔和遮罩，融入毛玻璃背景 */
-.cat-photo {
-	position: relative;
-	z-index: 2;
-	display: block;
-	width: 340rpx;
-	height: 340rpx;
-	border-radius: 46%;
-	object-fit: cover;
-	filter: drop-shadow(0 16rpx 26rpx rgba(60, 50, 90, 0.22));
-	-webkit-mask-image: radial-gradient(circle at 50% 46%, #000 0%, #000 62%, rgba(0, 0, 0, 0) 78%);
-	mask-image: radial-gradient(circle at 50% 46%, #000 0%, #000 62%, rgba(0, 0, 0, 0) 78%);
-	transform-origin: 50% 82%;
-	will-change: transform;
-	pointer-events: none;
-}
-
-/* 被摸：整个猫头缩一下再弹回 */
-.cat-patted {
-	animation: cat-squish 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes cat-squish {
-	0%   { transform: scale(1) translateY(0); }
-	20%  { transform: scale(1.06, 0.9) translateY(12rpx); }
-	55%  { transform: scale(0.95, 1.06) translateY(-6rpx); }
-	78%  { transform: scale(1.02, 0.98) translateY(2rpx); }
-	100% { transform: scale(1) translateY(0); }
-}
-
-/* ---------- 爱心粒子：向上飘 + 左右摆 + 旋转 + 淡出 ---------- */
-.cat-heart {
-	position: absolute;
-	z-index: 5;
-	background-image: linear-gradient(150deg, #FF9EC4 0%, #FF5E9C 55%, #E5347C 100%);
-	clip-path: polygon(50% 100%, 8% 56%, 0 32%, 4% 12%, 22% 2%, 38% 6%, 50% 20%, 62% 6%, 78% 2%, 96% 12%, 100% 32%, 92% 56%);
-	-webkit-clip-path: polygon(50% 100%, 8% 56%, 0 32%, 4% 12%, 22% 2%, 38% 6%, 50% 20%, 62% 6%, 78% 2%, 96% 12%, 100% 32%, 92% 56%);
-	filter: drop-shadow(0 0 10rpx var(--cat-glow));
-	opacity: 0;
-	pointer-events: none;
-	animation: cat-heart-float 1.5s cubic-bezier(0.22, 0.7, 0.3, 1) forwards;
-	will-change: transform, opacity;
-}
-
-@keyframes cat-heart-float {
-	0% {
-		opacity: 0;
-		transform: translate(-50%, 20rpx) scale(0.4) rotate(var(--hrot, 0deg));
-	}
-	18% {
-		opacity: 1;
-		transform: translate(-50%, -10rpx) scale(1.1) rotate(var(--hrot, 0deg));
-	}
-	60% {
-		opacity: 1;
-		transform: translate(calc(-50% + 16rpx), -110rpx) scale(1) rotate(calc(var(--hrot, 0deg) + 12deg));
-	}
-	100% {
-		opacity: 0;
-		transform: translate(calc(-50% - 12rpx), -230rpx) scale(1.15) rotate(calc(var(--hrot, 0deg) - 10deg));
-	}
-}
-
-.cat-hint {
-	position: relative;
-	z-index: 3;
-	margin-top: 24rpx;
-	font-size: 22rpx;
-	letter-spacing: 1rpx;
-	color: var(--text-faint);
-	transition: color 0.45s;
-}
-
-.cat-count {
-	margin-top: 10rpx;
-	font-size: 22rpx;
-	letter-spacing: 1rpx;
-	color: var(--text-dim);
-	transition: color 0.45s;
-}
-
-.cat-num {
-	font-size: 27rpx;
-	font-weight: 700;
-	color: var(--cat-ink);
-}
-
-/* 抽签 */
-.sign-card {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	width: 100%;
-	min-height: 300rpx;
-	padding: 40rpx 30rpx;
-	box-sizing: border-box;
-	border-radius: 34rpx;
-	border: 1rpx solid var(--glass-bd);
-	background-color: rgba(255, 255, 255, 0.10);
-	transition: transform 0.32s cubic-bezier(0.2, 1.3, 0.4, 1), opacity 0.32s ease;
-}
-
-.sign-card-rolling {
-	transform: scale(0.97) rotate(-1.2deg);
-	opacity: 0.72;
-}
-
-.sign-level {
-	font-size: 46rpx;
-	font-weight: 700;
-	letter-spacing: 8rpx;
-	transition: color 0.3s ease;
-}
-
-.sign-idle {
-	color: var(--text-faint);
-}
-
-.sign-best {
-	color: #f5c451;
-}
-
-.sign-good {
-	color: #5aa9ff;
-}
-
-.sign-flat {
-	color: var(--text-dim);
-}
-
-.sign-bad {
-	color: #ff7a7a;
-}
-
-.sign-text {
-	margin-top: 22rpx;
-	text-align: center;
-	font-size: 26rpx;
-	line-height: 1.55;
-	letter-spacing: 1rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-/* 答案之书 */
-.answer-card {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	width: 100%;
-	min-height: 300rpx;
-	padding: 40rpx 34rpx;
-	box-sizing: border-box;
-	border-radius: 34rpx;
-	border: 1rpx solid var(--glass-bd);
-	background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.05) 100%);
-	transition: transform 0.32s cubic-bezier(0.2, 1.3, 0.4, 1), opacity 0.32s ease;
-}
-
-.answer-card-rolling {
-	transform: scale(0.97);
-	opacity: 0.68;
-}
-
-.answer-hint {
-	font-size: 21rpx;
-	letter-spacing: 3rpx;
-	color: var(--text-faint);
-	transition: color 0.45s;
-}
-
-.answer-text {
-	margin-top: 24rpx;
-	text-align: center;
-	font-size: 34rpx;
-	font-weight: 600;
-	line-height: 1.45;
-	letter-spacing: 2rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-/* ---------- 计算器：液态玻璃小键盘 ---------- */
-.calc-body {
-	width: 100%;
-}
-
-.calc-screen {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	justify-content: flex-end;
-	width: 100%;
-	min-height: 150rpx;
-	padding: 20rpx 26rpx;
-	box-sizing: border-box;
-	border-radius: 30rpx;
-	border: 1rpx solid var(--glass-bd);
-	background-color: var(--glass-bg-2);
-	box-shadow: inset 0 1rpx 0 var(--glass-hl-btm);
-	overflow: hidden;
-}
-
-.calc-expr {
-	min-height: 30rpx;
-	font-size: 22rpx;
-	letter-spacing: 1rpx;
-	color: var(--text-faint);
-	transition: color 0.45s;
-}
-
-.calc-out {
-	margin-top: 6rpx;
-	max-width: 100%;
-	font-size: 54rpx;
-	font-weight: 600;
-	line-height: 1.12;
-	letter-spacing: 1rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-.calc-out-err {
-	font-size: 32rpx;
-	font-weight: 500;
-	color: #ff7a7a;
-}
-
-.calc-pad {
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
-	grid-auto-rows: 86rpx;
-	gap: 14rpx;
-	width: 100%;
-	margin-top: 20rpx;
-}
-
-.calc-key {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: 24rpx;
-	border: 1rpx solid var(--seg-thumb-bd);
-	background-color: var(--seg-thumb);
-	box-shadow: inset 0 1rpx 0 var(--glass-hl), 0 4rpx 10rpx rgba(0, 0, 0, 0.10);
-	transition: transform 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
-}
-
-.calc-key-active {
-	transform: scale(0.93);
-	box-shadow: inset 0 1rpx 0 var(--glass-hl), 0 1rpx 4rpx rgba(0, 0, 0, 0.10);
-}
-
-.calc-key-txt {
-	font-size: 32rpx;
-	font-weight: 500;
-	letter-spacing: 1rpx;
-	color: var(--text);
-	transition: color 0.45s;
-}
-
-.calc-key-fn .calc-key-txt {
-	font-size: 28rpx;
-	color: var(--text-dim);
-}
-
-.calc-key-op .calc-key-txt {
-	font-size: 38rpx;
-	font-weight: 600;
-	color: var(--accent);
-}
-
-.calc-key-eq {
-	border-color: transparent;
-	background-image: linear-gradient(180deg, var(--btn-a) 0%, var(--btn-b) 100%);
-	box-shadow: 0 8rpx 20rpx rgba(10, 60, 140, 0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.5);
-}
-
-.calc-key-eq .calc-key-txt {
-	font-size: 40rpx;
-	font-weight: 700;
-	color: var(--btn-txt);
-}
-
-.calc-key-wide {
-	grid-column: span 2;
-}
-
-.calc-key-tall {
-	grid-row: span 2;
-}
 </style>
