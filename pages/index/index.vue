@@ -96,7 +96,7 @@
 				></image>
 				<view class="poster-fallback" v-else>
 					<text class="fallback-text">{{ jlFallbackText }}</text>
-					<view class="retry-btn" v-if="jlGuide.status === 'error'" @click.stop="loadGuide(jlGuideIndex)">
+					<view class="retry-btn" v-if="jlGuide.status === 'error' || jlGuide.status === 'idle'" @click.stop="loadGuide(jlGuideIndex)">
 						<text class="retry-txt">重新加载</text>
 					</view>
 				</view>
@@ -598,14 +598,19 @@ export default {
 			.then(() => this.fetchPoster())
 			.then(() => this.fetchTomorrow()) // 顺带把明天也拿到，点「明天」不用等
 			.then(() => this.fetchJinLa()) // 标题下方的「今日季蜡」
+			.catch(() => {}) // 任一步异常不阻断收尾
 			.then(() => {
 				// 攻略副标题与休赛判定不影响主流程，等主数据就位后再补，避免首屏并发被限流
 				// #ifdef H5
 				this.prefetchGuideTexts();
 				this.precheckEndedGuide();
-				this.loadGuide(this.jlGuideIndex); // 季蜡大图卡片：进页自动拉图
 				// #endif
 			});
+
+		// #ifdef H5
+		// 季蜡大图独立加载：不挂在主数据链上，前面任何接口失败都不影响它拉图
+		this.loadGuide(this.jlGuideIndex);
+		// #endif
 
 		// 时钟 + 距刷新倒计时
 		this.startClock();
