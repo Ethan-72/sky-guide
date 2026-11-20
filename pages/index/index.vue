@@ -78,6 +78,27 @@
 				</view>
 			</view>
 
+			<!-- 季蜡位置：整块提前到「每日任务」前面（数据/点击/样式与原「更多攻略」里的那张卡完全一致） -->
+			<!-- #ifdef H5 -->
+			<view class="section" v-if="isToday">
+				<text class="section-title">季蜡位置</text>
+				<text class="section-hint">点击查看</text>
+			</view>
+
+			<view v-if="isToday" class="guide-strip">
+				<view
+					class="guide-card"
+					:class="'guide-' + jlGuide.status"
+					:key="jlGuide.key"
+					@click="openGuide(jlGuideIndex)"
+				>
+					<view class="guide-mark"><text class="guide-mark-txt">{{ jlGuide.mark }}</text></view>
+					<text class="guide-name">{{ jlGuide.name }}</text>
+					<text class="guide-desc">{{ guideCardDesc(jlGuide) }}</text>
+				</view>
+			</view>
+			<!-- #endif -->
+
 			<!-- 任务列表 -->
 			<view class="glass list">
 				<view
@@ -121,12 +142,7 @@
 				</view>
 			</view>
 
-			<!-- 图片下方的保存按钮：和「生成分享图」预览里的那颗一致 -->
-			<view class="save-bar" v-if="isToday && posterUrl && !posterError">
-				<view class="save-btn" hover-class="save-btn-active" :hover-stay-time="80" @click.stop="downloadImage(posterUrl, '冰块-今日攻略图.png')">
-					<text class="save-btn-txt">保存图片</text>
-				</view>
-			</view>
+			<!-- 外层「保存图片」按钮已删除：保存入口保留在 攻略图弹层 与 任务单图弹层 里 -->
 
 			<!-- 更多攻略：横向卡片 + 共用一个查看弹层（仅 H5） -->
 			<!-- #ifdef H5 -->
@@ -136,17 +152,19 @@
 			</view>
 
 			<view v-if="isToday" class="guide-strip">
-				<view
-					class="guide-card"
-					:class="'guide-' + g.status"
-					v-for="(g, i) in guides"
-					:key="g.key"
-					@click="openGuide(i)"
-				>
-					<view class="guide-mark"><text class="guide-mark-txt">{{ g.mark }}</text></view>
-					<text class="guide-name">{{ g.name }}</text>
-					<text class="guide-desc">{{ guideCardDesc(g) }}</text>
-				</view>
+				<!-- 季蜡位置已提前到「每日任务」上方单独展示，这里跳过，其余卡保持原索引 -->
+				<template v-for="(g, i) in guides" :key="g.key">
+					<view
+						class="guide-card"
+						:class="'guide-' + g.status"
+						v-if="g.key !== 'jl'"
+						@click="openGuide(i)"
+					>
+						<view class="guide-mark"><text class="guide-mark-txt">{{ g.mark }}</text></view>
+						<text class="guide-name">{{ g.name }}</text>
+						<text class="guide-desc">{{ guideCardDesc(g) }}</text>
+					</view>
+				</template>
 			</view>
 
 			<view class="sheet-mask" v-if="guideOpen" @click="closeGuide">
@@ -498,6 +516,17 @@ export default {
 		},
 
 		// #ifdef H5
+		// 季蜡位置卡片：已提前到「每日任务」上方单独渲染，数据仍来自 guides 数组
+		jlGuide() {
+			return this.guides.find(g => g.key === 'jl') || { key: 'jl', name: '季蜡位置', mark: '蜡', desc: '', status: 'idle', url: '', err: '' };
+		},
+
+		// 季蜡在 guides 数组里的原始索引：点击仍走 openGuide(原索引)，弹层数据不受搬家影响
+		jlGuideIndex() {
+			const i = this.guides.findIndex(g => g.key === 'jl');
+			return i < 0 ? 0 : i;
+		},
+
 		activeGuide() {
 			return this.guides[this.guideActive] || { name: '', desc: '', status: 'idle', url: '', err: '' };
 		},
@@ -778,22 +807,41 @@ export default {
 			this._mouseUp = null;
 		},
 
+		// 读取切换器轨道的真实几何（按下点 → 格位换算用）
+		// 注意：uni-app 归一化后的 e.currentTarget 不是真实 DOM（只有 id/dataset/offsetLeft），
+		// 所以这里直接从文档里取轨道节点读 getBoundingClientRect；拿不到就返回 null 走相对跟手兜底
+		_trackRect(kind) {
+			if (typeof document === 'undefined' || !document.querySelector) return null;
+			try {
+				const el = document.querySelector(kind === 'day' ? '.daytabs' : '.seg');
+				if (el && typeof el.getBoundingClientRect === 'function') {
+					const r = el.getBoundingClientRect();
+					if (r && typeof r.left === 'number' && r.width > 0) return { left: r.left, width: r.width };
+				}
+			} catch (err) {
+				// 几何信息不可用，走兜底
+			}
+			return null;
+		},
+
 		onDragStart(e, kind) {
 			const m = this.tabMeta(kind);
 			this.stopSpring(kind); // 抢过正在飞行的滑块
 			this.applySlide(kind, this[kind === 'day' ? 'dayTabIdx' : 'segIdx'], 0, false);
 			const x0 = this.touchX(e);
+			// 严格绑定按下点：记录按下时轨道几何，拖动时滑块吸附在手指正下方 1:1 跟手
+			// （无论滑块当前停在哪一格，从哪按就从哪跟手，不会从旧位置跳）
 			this._drag = {
 				kind,
 				x0,
-				i0: m.idx,
+				rect: this._trackRect(kind),
+				i0: m.idx, // 兜底：拿不到几何时按当前格做相对跟手
 				t0: Date.now(),
 				lastX: x0,
 				lastT: Date.now(),
 				v: 0,
 				n: m.n,
-				moved: false,
-				targetEl: e.currentTarget
+				moved: false
 			};
 			// 鼠标按下：拖出元素也要跟手
 			if (e && e.type === 'mousedown') this._bindMouse(kind);
@@ -824,10 +872,28 @@ export default {
 			if (!d.moved && Math.abs(dx) < 6) return;
 			d.moved = true;
 
-			// 一格宽度 = 容器宽 / 格数（px 只在这里用于换算）
-			const w = (d.targetEl && d.targetEl.clientWidth ? d.targetEl.clientWidth : 300) / d.n;
-			const raw = d.i0 + dx / w;
-			const idx = this.dampIdx(raw, d.n);
+			// 一格宽度 = 轨道宽 / 格数（px 只在这里用于换算）
+			const n = d.n;
+			let w;
+			if (d.rect && d.rect.width) {
+				w = d.rect.width / n;
+			} else {
+				// 兜底：拿不到轨道几何时用视口宽近似
+				const baseW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 300;
+				w = baseW / n;
+			}
+
+			// 严格绑定按下点：滑块位置 = 手指位置 - startOffset（按下点即抓取点，startOffset 归零）
+			// thumb 的 CSS 位移是 translate3d(idx * 100%)（按自身宽度平移），所以减 0.5 对齐格心：
+			// 手指按在「今天」格中心 → idx 正好 = 1，滑块吸附在手指正下方 1:1 跟手，不从旧位置起拖
+			// 越界部分交给 dampIdx 做橡皮筋阻尼
+			let idx;
+			if (d.rect) {
+				idx = this.dampIdx((x - d.rect.left) / w - 0.5, n);
+			} else {
+				// 兜底：拿不到轨道几何时按「当前格 + 手指位移」相对跟手
+				idx = this.dampIdx(d.i0 + dx / w, n);
+			}
 
 			// 速度（格/秒），用最近一段位移估算
 			const dt = Math.max(now - d.lastT, 8);
@@ -2181,6 +2247,8 @@ export default {
 	height: 60rpx;
 	padding: 4rpx;
 	box-sizing: border-box;
+	/* 手势隔离：滑块上起手只做拖拽切换，不参与页面滚动/浏览器手势竞争 */
+	touch-action: none;
 	border-radius: 999rpx;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
@@ -2232,6 +2300,8 @@ export default {
 	min-width: 0;
 	align-items: center;
 	padding: 5rpx;
+	/* 手势隔离：滑块上起手只做拖拽切换，不参与页面滚动/浏览器手势竞争 */
+	touch-action: none;
 	border-radius: 999rpx;
 	background-color: var(--seg-bg);
 	border: 1rpx solid var(--glass-bd);
