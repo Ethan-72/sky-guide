@@ -2727,8 +2727,9 @@ export default {
 	width: 100%;
 	height: auto;
 	min-height: 360rpx;
-	/* 底部裁掉一条，遮住长图自带的「数据来源」水印字（只有 H5 静态图上会带） */
-	margin-bottom: -32rpx;
+	/* 数据源已改版（四宫格 + 底部任务文字行），不再裁底部：
+	   老的 -32rpx 负 margin 会把底部任务文字切掉一半 */
+	margin-bottom: 0;
 }
 
 .poster-fallback {
