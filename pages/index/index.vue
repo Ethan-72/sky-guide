@@ -78,23 +78,27 @@
 				</view>
 			</view>
 
-			<!-- 季蜡位置：整块提前到「每日任务」前面（数据/点击/样式与原「更多攻略」里的那张卡完全一致） -->
+			<!-- 季蜡位置：与「今日攻略图」同款大图卡片，进页自动加载，点击全屏放大（仅 H5） -->
 			<!-- #ifdef H5 -->
 			<view class="section" v-if="isToday">
 				<text class="section-title">季蜡位置</text>
-				<text class="section-hint">点击查看</text>
+				<text class="section-hint">点击放大</text>
 			</view>
 
-			<view v-if="isToday" class="guide-strip">
-				<view
-					class="guide-card"
-					:class="'guide-' + jlGuide.status"
-					:key="jlGuide.key"
-					@click="openGuide(jlGuideIndex)"
-				>
-					<view class="guide-mark"><text class="guide-mark-txt">{{ jlGuide.mark }}</text></view>
-					<text class="guide-name">{{ jlGuide.name }}</text>
-					<text class="guide-desc">{{ guideCardDesc(jlGuide) }}</text>
+			<view class="glass poster-card" v-if="isToday" @click="previewJl">
+				<image
+					v-if="jlGuide.url && jlGuide.status !== 'error'"
+					class="poster"
+					:src="jlGuide.url"
+					mode="widthFix"
+					@load="onGuideImgLoad(jlGuideIndex)"
+					@error="onGuideImgError(jlGuideIndex)"
+				></image>
+				<view class="poster-fallback" v-else>
+					<text class="fallback-text">{{ jlFallbackText }}</text>
+					<view class="retry-btn" v-if="jlGuide.status === 'error'" @click.stop="loadGuide(jlGuideIndex)">
+						<text class="retry-txt">重新加载</text>
+					</view>
 				</view>
 			</view>
 			<!-- #endif -->
@@ -527,6 +531,14 @@ export default {
 			return i < 0 ? 0 : i;
 		},
 
+		// 季蜡大图的占位文案：按状态给提示，不让用户看到空白
+		jlFallbackText() {
+			const g = this.jlGuide;
+			if (g.status === 'loading') return '正在加载…';
+			if (g.status === 'error') return g.err || '加载失败，请重试';
+			return '暂无季蜡图';
+		},
+
 		activeGuide() {
 			return this.guides[this.guideActive] || { name: '', desc: '', status: 'idle', url: '', err: '' };
 		},
@@ -591,6 +603,7 @@ export default {
 				// #ifdef H5
 				this.prefetchGuideTexts();
 				this.precheckEndedGuide();
+				this.loadGuide(this.jlGuideIndex); // 季蜡大图卡片：进页自动拉图
 				// #endif
 			});
 
@@ -1322,6 +1335,18 @@ export default {
 				return;
 			}
 			this.openImageViewer(this.posterUrl, '冰块-今日攻略图.png');
+		},
+
+		// 季蜡大图全屏查看：与今日攻略图一致，弹层内可保存
+		previewJl() {
+			// #ifdef H5
+			const g = this.jlGuide;
+			if (!g.url || g.status === 'error') {
+				uni.showToast({ title: '季蜡图还没加载好', icon: 'none' });
+				return;
+			}
+			this.openImageViewer(g.url, '冰块-季蜡位置.png');
+			// #endif
 		},
 
 		/* ============ 点任务行 → 看这一条对应的格子图 ============ */
@@ -2690,6 +2715,11 @@ export default {
 	padding: 0;
 	/* 长图底部自带的来源水印条：靠负 margin + 裁切整体藏掉 */
 	overflow: hidden;
+}
+
+/* 任务列表（每日任务）与上方季蜡大图卡片的间距 */
+.glass.list {
+	margin-top: 40rpx;
 }
 
 .poster {
