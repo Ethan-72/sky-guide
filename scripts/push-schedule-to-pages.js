@@ -1,9 +1,9 @@
 /**
- * 把 static/data/schedule.json 同步到 gh-pages 分支。
+ * 把 static/data/*.json 快照同步到 gh-pages 分支。
  *
  * 背景：GitHub Pages 的发布源是 gh-pages 分支，而每日快照由 Actions 写到 main。
  * 若不同步，线上读到的永远是最后一次全量部署时的旧快照。
- * 这里只更新这一个文件，不触发全量构建。
+ * 这里只更新这几个文件，不触发全量构建。
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,15 +13,10 @@ const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 const OWNER = process.env.GH_OWNER || 'Ethan-72';
 const REPO = process.env.GH_REPO || 'sky-guide';
 const BRANCH = process.env.GH_BRANCH || 'gh-pages';
-const FILE = 'static/data/schedule.json';
-const SRC = path.resolve(__dirname, '..', FILE);
+const FILES = ['static/data/schedule.json', 'static/data/fuxian.json'];
 
 if (!TOKEN) {
 	console.error('缺少 GH_TOKEN / GITHUB_TOKEN 环境变量');
-	process.exit(1);
-}
-if (!fs.existsSync(SRC)) {
-	console.error('未找到快照 ' + FILE + '，请先执行 node scripts/fetch-schedule.js');
 	process.exit(1);
 }
 
@@ -44,35 +39,42 @@ function api(method, url, body) {
 }
 
 (async () => {
-	const buf = fs.readFileSync(SRC);
-	const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`;
-	let sha = '';
-
-	try {
-		const cur = api('GET', `${url}?ref=${BRANCH}`);
-		if (cur && cur.sha) {
-			sha = cur.sha;
-			if (Buffer.from(cur.content || '', 'base64').equals(buf)) {
-				console.log('[pages] 快照无变化，跳过');
-				return;
-			}
+	for (const FILE of FILES) {
+		const src = path.resolve(__dirname, '..', FILE);
+		if (!fs.existsSync(src)) {
+			console.log('[pages] 跳过 ' + FILE + '（未生成）');
+			continue;
 		}
-	} catch (e) {
-		// 目标文件还不存在，按新建处理
-	}
+		const buf = fs.readFileSync(src);
+		const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`;
+		let sha = '';
 
-	const payload = {
-		message: 'chore: 同步每日日程快照到 Pages',
-		content: buf.toString('base64'),
-		branch: BRANCH
-	};
-	if (sha) payload.sha = sha;
+		try {
+			const cur = api('GET', `${url}?ref=${BRANCH}`);
+			if (cur && cur.sha) {
+				sha = cur.sha;
+				if (Buffer.from(cur.content || '', 'base64').equals(buf)) {
+					console.log('[pages] ' + FILE + ' 无变化，跳过');
+					continue;
+				}
+			}
+		} catch (e) {
+			// 目标文件不存在，按新建处理
+		}
 
-	const out = api('PUT', url, payload);
-	if (!out || !out.commit || !out.commit.sha) {
-		throw new Error('写入 gh-pages 失败：' + JSON.stringify(out).slice(0, 200));
+		const payload = {
+			message: 'chore: 同步每日快照到 Pages',
+			content: buf.toString('base64'),
+			branch: BRANCH
+		};
+		if (sha) payload.sha = sha;
+
+		const out = api('PUT', url, payload);
+		if (!out || !out.commit || !out.commit.sha) {
+			throw new Error('写入 gh-pages 失败：' + JSON.stringify(out).slice(0, 200));
+		}
+		console.log('[pages] 已同步 ' + FILE + ' 到 ' + BRANCH + '：' + out.commit.sha);
 	}
-	console.log('[pages] 已同步到 ' + BRANCH + '：' + out.commit.sha);
 })().catch(e => {
 	console.error('[pages] FAILED: ' + e.message);
 	process.exit(1);
