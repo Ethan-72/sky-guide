@@ -38,3 +38,9 @@ jobs:
             git commit -m "chore: 同步每日日程快照"
             git push
           fi
+
+      # Pages 发布源是 gh-pages 分支，只推 main 线上看不到新快照
+      - name: Sync snapshot to GitHub Pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/push-schedule-to-pages.js
