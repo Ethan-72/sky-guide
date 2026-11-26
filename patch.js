@@ -223,6 +223,17 @@
 		return node;
 	}
 
+	/* 主题 CSS 变量定义在带 scoped 属性的元素上，挂在 body 下的弹层继承不到；
+	   打开时从当前主题元素实时读值写进内联样式，日夜主题都跟随 */
+	function themeStyle(css) {
+		var host = document.querySelector('.theme-dark[data-v-4b805f10]') ||
+			document.querySelector('.theme-light[data-v-4b805f10]') || document.body;
+		var cs = getComputedStyle(host);
+		return css.replace(/var\((--[a-z0-9-]+)\)/g, function (m, name) {
+			return cs.getPropertyValue(name).trim() || 'transparent';
+		});
+	}
+
 	var scrollLocked = false;
 	function lockScroll(on) {
 		if (on === scrollLocked) return;
@@ -234,17 +245,17 @@
 	function openScheduleSheet() {
 		if (!schedule) return;
 		var mask = el('uni-view', 'sheet-mask');
-		mask.style.cssText = MASK_CSS;
+		mask.style.cssText = themeStyle(MASK_CSS);
 		mask.dataset.skyPatch = '1';
 		var sheet = el('uni-view', 'sheet glass');
-		sheet.style.cssText = SHEET_CSS;
+		sheet.style.cssText = themeStyle(SHEET_CSS);
 
 		var head = el('uni-view', 'sheet-head');
 		head.style.cssText = HEAD_CSS;
 		var title = el('uni-text', 'sheet-title', '日程家具');
-		title.style.cssText = TITLE_CSS;
+		title.style.cssText = themeStyle(TITLE_CSS);
 		var close = el('uni-view', 'sheet-close', '关闭');
-		close.style.cssText = CLOSE_CSS;
+		close.style.cssText = themeStyle(CLOSE_CSS);
 		head.appendChild(title);
 		head.appendChild(close);
 
@@ -275,6 +286,12 @@
 			if (body.contains(e.target) && body.scrollHeight > body.clientHeight) return;
 			e.preventDefault();
 		}, { passive: false });
+
+		style.textContent = themeStyle(
+			'.sky-patch-box{margin-top:9px;padding:10px 12px;border-radius:9px;border:1px solid var(--glass-bd);background-color:var(--glass-bg)}' +
+			'.sky-patch-txt{display:block;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-line}' +
+			'.sky-patch-tip{margin-top:8px;text-align:center;font-size:11px;color:var(--text-faint)}'
+		);
 
 		lockScroll(true);
 		document.body.appendChild(mask);
