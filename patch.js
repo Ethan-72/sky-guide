@@ -158,8 +158,9 @@
 			var added = muts[i].addedNodes;
 			for (var j = 0; j < added.length; j++) {
 				var n = added[j];
-				if (n.nodeType !== 1 || n.parentElement !== document.body) continue;
-				if (String(n.className || '').indexOf('uni-') > -1) continue; // uni-app 内置层不碰
+		if (n.nodeType !== 1 || n.parentElement !== document.body) continue;
+		if (n.dataset && n.dataset.skyPatch) continue; // 补丁自己的弹层不碰
+		if (String(n.className || '').indexOf('uni-') > -1) continue; // uni-app 内置层不碰
 				if (!n.querySelector || !n.querySelector('img')) continue;
 				if (getComputedStyle(n).position !== 'fixed') continue;
 				attachViewerGestures(n);
@@ -200,8 +201,20 @@
 	var NAME_CSS = 'margin-top:.5rem;font-size:.8125rem;font-weight:600;letter-spacing:.03125rem;color:var(--text);';
 	var DESC_CSS = 'max-width:100%;margin-top:.25rem;overflow:hidden;font-size:.625rem;line-height:1.35;color:var(--text-faint);' +
 		'text-overflow:ellipsis;white-space:nowrap;';
-	var TITLE_CSS = 'font-size:.9375rem;font-weight:600;color:var(--text);';
-	var CLOSE_CSS = 'font-size:.75rem;color:var(--text-faint);cursor:pointer;';
+	var TITLE_CSS = 'font-size:.9375rem;font-weight:600;letter-spacing:.03125rem;color:var(--text);';
+	var CLOSE_CSS = 'padding:.25rem .5625rem;border-radius:31.21875rem;border:.03125rem solid var(--glass-bd);' +
+		'background-color:var(--glass-bg);font-size:.6875rem;color:var(--text-dim);cursor:pointer;';
+	/* 面板样式取自编译产物 .glass/.sheet（scoped CSS 对运行时 DOM 无效，必须内联） */
+	var MASK_CSS = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:80;display:flex;align-items:center;' +
+		'justify-content:center;padding:1.25rem;box-sizing:border-box;background-color:rgba(0,0,0,.56);';
+	var SHEET_CSS = 'position:relative;overflow:hidden;display:flex;flex-direction:column;width:100%;max-height:76vh;' +
+		'padding:.875rem .8125rem .75rem;box-sizing:border-box;border-radius:1.0625rem;border:.03125rem solid var(--glass-bd);' +
+		'background-color:var(--glass-bg);background-image:linear-gradient(168deg,var(--glass-bg-2) 0%,rgba(255,255,255,0) 48%);' +
+		'-webkit-backdrop-filter:blur(var(--blur)) saturate(200%);backdrop-filter:blur(var(--blur)) saturate(200%);' +
+		'box-shadow:var(--shadow),inset 0 .03125rem 0 var(--glass-hl),inset 0 -.03125rem 0 var(--glass-hl-btm),' +
+		'inset 0 0 0 .03125rem var(--glass-rim);';
+	var HEAD_CSS = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:.625rem;flex-shrink:0;';
+	var BODY_CSS = 'flex:1;min-height:0;overflow-y:auto;';
 
 	function el(tag, cls, text) {
 		var node = document.createElement(tag);
@@ -210,24 +223,33 @@
 		return node;
 	}
 
+	var scrollLocked = false;
+	function lockScroll(on) {
+		if (on === scrollLocked) return;
+		scrollLocked = on;
+		document.documentElement.style.overflow = on ? 'hidden' : '';
+		document.body.style.overflow = on ? 'hidden' : '';
+	}
+
 	function openScheduleSheet() {
 		if (!schedule) return;
 		var mask = el('uni-view', 'sheet-mask');
-		mask.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+		mask.style.cssText = MASK_CSS;
+		mask.dataset.skyPatch = '1';
 		var sheet = el('uni-view', 'sheet glass');
-		sheet.style.cssText = 'width:100%;max-width:520px;max-height:86vh;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;overflow-y:auto;';
+		sheet.style.cssText = SHEET_CSS;
 
 		var head = el('uni-view', 'sheet-head');
+		head.style.cssText = HEAD_CSS;
 		var title = el('uni-text', 'sheet-title', '日程家具');
 		title.style.cssText = TITLE_CSS;
 		var close = el('uni-view', 'sheet-close', '关闭');
 		close.style.cssText = CLOSE_CSS;
 		head.appendChild(title);
 		head.appendChild(close);
-		close.addEventListener('click', function (e) { e.stopPropagation(); mask.remove(); });
-		head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;';
 
 		var body = el('uni-view', 'sheet-body');
+		body.style.cssText = BODY_CSS;
 		if (schedule.image) {
 			var img = el('img', 'sheet-img');
 			img.src = schedule.image;
@@ -243,8 +265,18 @@
 		sheet.appendChild(head);
 		sheet.appendChild(body);
 		mask.appendChild(sheet);
-		mask.addEventListener('click', function () { mask.remove(); });
+
+		function closeSheet() { lockScroll(false); mask.remove(); }
+		close.addEventListener('click', function (e) { e.stopPropagation(); closeSheet(); });
+		mask.addEventListener('click', closeSheet);
 		sheet.addEventListener('click', function (e) { e.stopPropagation(); });
+		/* 锁背景滚动：面板内可滚区域放行，其余一律阻止触摸穿透 */
+		mask.addEventListener('touchmove', function (e) {
+			if (body.contains(e.target) && body.scrollHeight > body.clientHeight) return;
+			e.preventDefault();
+		}, { passive: false });
+
+		lockScroll(true);
 		document.body.appendChild(mask);
 	}
 
