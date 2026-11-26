@@ -1,0 +1,40 @@
+name: 每日日程快照同步
+
+# 倾慕 rwt/rl 接口没有 CORS 头，浏览器直连会被拦截；
+# 这里每天定时把文字抓成静态 JSON，前端只读同源文件。
+on:
+  schedule:
+    # UTC 16:05 / 04:05 = 北京时间 00:05 / 12:05
+    - cron: '5 16 * * *'
+    - cron: '5 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch schedule snapshot
+        run: node scripts/fetch-schedule.js
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add static/data/schedule.json
+          if git diff --cached --quiet; then
+            echo "快照无变化，跳过提交"
+          else
+            git commit -m "chore: 同步每日日程快照"
+            git push
+          fi

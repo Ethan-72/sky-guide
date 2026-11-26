@@ -10,6 +10,9 @@
 /* 有代理时走 /api，纯静态托管构建时注入绝对地址 */
 export const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || '/api';
 
+/** 静态资源基路径：Pages 子目录部署为 /sky-guide/，本地为 / */
+export const STATIC_BASE = String((import.meta.env && import.meta.env.BASE_URL) || '/').replace(/\/$/, '');
+
 /** 第三方接口密钥：构建期注入，源码与仓库中不再出现明文 */
 const API_KEY = String((import.meta.env && import.meta.env.VITE_API_KEY) || '').trim();
 
@@ -287,4 +290,36 @@ export async function fetchGuideTexts() {
 	}
 
 	return out;
+}
+
+/**
+ * 日程家具：源接口没有 CORS 头，浏览器不能直连，
+ * 改读 GitHub Actions 每天抓好的静态快照。
+ * → { ok, text, image, date, updateTime }
+ */
+export async function fetchSchedule() {
+	const r = await enqueue(() =>
+		request({ url: STATIC_BASE + '/static/data/schedule.json', method: 'GET', timeout: 10000 })
+	);
+	if (!r.ok) return { ok: false, reason: '网络异常' };
+
+	const body = safeJson(r.res.data) || {};
+	const date = String(body.date || '');
+	const image = String(body.image || body.tcurl || '');
+	const updateTime = String(body.update_time || '');
+
+	// 接口明确表示今天没有内容：照常展示提示，不算失败
+	if (body.status && body.status !== 'normal') {
+		return { ok: true, text: '今日暂无日程', image, date, updateTime };
+	}
+
+	const text = String(body.text || '').trim();
+	if (!text) return { ok: false, reason: '日程数据为空' };
+	return { ok: true, text, image, date, updateTime };
+}
+
+/** 从日程文字里摘出「本周家具」那一行，用作卡片副标题 */
+export function pickFurnitureLine(text) {
+	const lines = String(text || '').split(/\r?\n/);
+	return lines.find(line => line.indexOf('本周家具') > -1) || '';
 }

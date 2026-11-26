@@ -197,7 +197,12 @@
 							</view>
 						</view>
 
-						<view class="save-bar save-bar-in" v-if="activeGuide.url && activeGuide.status === 'ok'">
+						<!-- 日程家具：日历图不含文字，完整日程另起一块展示 -->
+						<view class="schedule-box" v-if="activeGuide.key === 'rl' && activeGuide.text">
+							<text class="schedule-txt">{{ activeGuide.text }}</text>
+						</view>
+
+						<view class="save-bar save-bar-in" v-if="activeGuide.url && activeGuide.status === 'ok' && activeGuide.key !== 'rl'">
 							<view class="save-btn" hover-class="save-btn-active" :hover-stay-time="80" @click.stop="downloadImage(activeGuide.url, '冰块-' + activeGuide.name + '.png')">
 								<text class="save-btn-txt">保存图片</text>
 							</view>
@@ -319,7 +324,9 @@ import {
 	fetchTomorrow as apiFetchTomorrow,
 	fetchJinLa as apiFetchJinLa,
 	fetchGuideJson as apiFetchGuideJson,
-	fetchGuideTexts as apiFetchGuideTexts
+	fetchGuideTexts as apiFetchGuideTexts,
+	fetchSchedule as apiFetchSchedule,
+	pickFurnitureLine
 } from '../../api/sky.js';
 import { getShotRects, getHsDrop, FALLBACK_POSTER_W, FALLBACK_POSTER_H } from '../../utils/guide-config.js';
 import {
@@ -400,14 +407,15 @@ export default {
 			sharing: false, // 正在生成中，防重复点击
 			shareCanvasH: 1060, // 离屏画布高度（px），按任务条数动态计算
 
-			// -------- 更多攻略（季蜡 / 红石 / 复刻先祖 / 免费魔法）--------
+			// -------- 更多攻略（季蜡 / 红石 / 复刻先祖 / 免费魔法 / 日程家具）--------
 			// status: idle 未加载 / loading 加载中 / ok 可看 / empty 今日无内容 /
 			//         closed 本期已结束（不可点） / error 失败可重试
 			guides: [
 				{ key: 'jl', name: '季蜡位置', mark: '蜡', desc: '', status: 'idle', url: '', err: '' },
 				{ key: 'hs', name: '红石天气', mark: '石', desc: '', status: 'idle', url: '', err: '' },
 				{ key: 'fk', name: '复刻先祖', mark: '祖', desc: '', status: 'idle', url: '', err: '' },
-				{ key: 'mf', name: '免费魔法', mark: '魔', desc: '', status: 'idle', url: '', err: '' }
+				{ key: 'mf', name: '免费魔法', mark: '魔', desc: '', status: 'idle', url: '', err: '' },
+				{ key: 'rl', name: '日程家具', mark: '具', desc: '', text: '', status: 'idle', url: '', err: '' }
 			],
 			guideActive: 0, // 弹层当前展示的项
 			guideOpen: false, // 弹层开关
@@ -1726,13 +1734,22 @@ export default {
 		loadGuide(i) {
 			const g = this.guides[i];
 			if (!g) return;
-			const cfg = GUIDE_API[g.key];
-			if (!cfg) return;
 
+			g.text = '';
+			g.desc = '';
 			g.err = '';
 			g.url = '';
 			g.loaded = false;
 			g.status = 'loading';
+
+			// 日程家具走静态快照，不在 GUIDE_API 里
+			if (g.key === 'rl') {
+				this.fetchSchedule(i);
+				return;
+			}
+
+			const cfg = GUIDE_API[g.key];
+			if (!cfg) return;
 
 			if (cfg.json) {
 				this.fetchGuideJson(i, cfg.json);
@@ -1758,6 +1775,28 @@ export default {
 				return;
 			}
 			g.status = 'ok';
+		},
+
+		/* 日程家具：读静态快照，文字直接铺在弹层里 */
+		fetchSchedule(i) {
+			const g = this.guides[i];
+			if (!g) return Promise.resolve();
+			return apiFetchSchedule()
+				.then(r => {
+					if (!r || !r.ok) {
+						g.status = 'error';
+						g.err = (r && r.reason) || '日程加载失败';
+						return;
+					}
+					g.text = r.text || '';
+					g.url = r.image || '';
+					g.desc = pickFurnitureLine(r.text).replace(/[（）]/g, '');
+					g.status = 'ok';
+				})
+				.catch(() => {
+					g.status = 'error';
+					g.err = '日程加载失败';
+				});
 		},
 
 		/* 红石天气：{ data: [jpg, gif] }，gif 是点赞贴纸，必须过滤 */
@@ -3003,6 +3042,23 @@ export default {
 	align-items: center;
 	justify-content: center;
 	min-height: 300rpx;
+}
+
+/* 日程家具：完整日程文字（跟随日夜主题） */
+.schedule-box {
+	margin-top: 18rpx;
+	padding: 20rpx 24rpx;
+	border-radius: 18rpx;
+	border: 1rpx solid var(--glass-bd);
+	background-color: var(--glass-bg);
+}
+
+.schedule-txt {
+	display: block;
+	font-size: 24rpx;
+	line-height: 1.7;
+	color: var(--text);
+	white-space: pre-line;
 }
 
 .sheet-tip {
