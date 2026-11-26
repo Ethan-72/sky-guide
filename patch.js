@@ -242,8 +242,7 @@
 		document.body.style.overflow = on ? 'hidden' : '';
 	}
 
-	function openScheduleSheet() {
-		if (!schedule) return;
+	function openSheet(titleText, imageUrl, bodyText) {
 		var mask = el('uni-view', 'sheet-mask');
 		mask.style.cssText = themeStyle(MASK_CSS);
 		mask.dataset.skyPatch = '1';
@@ -252,7 +251,7 @@
 
 		var head = el('uni-view', 'sheet-head');
 		head.style.cssText = HEAD_CSS;
-		var title = el('uni-text', 'sheet-title', '日程家具');
+		var title = el('uni-text', 'sheet-title', titleText);
 		title.style.cssText = themeStyle(TITLE_CSS);
 		var close = el('uni-view', 'sheet-close', '关闭');
 		close.style.cssText = themeStyle(CLOSE_CSS);
@@ -261,16 +260,16 @@
 
 		var body = el('uni-view', 'sheet-body');
 		body.style.cssText = BODY_CSS;
-		if (schedule.image) {
+		if (imageUrl) {
 			var img = el('img', 'sheet-img');
-			img.src = schedule.image;
+			img.src = imageUrl;
 			img.style.cssText = 'display:block;width:100%;border-radius:9px;max-height:46vh;object-fit:contain;';
-			img.addEventListener('click', function (e) { e.stopPropagation(); window.open(schedule.image, '_blank'); });
+			img.addEventListener('click', function (e) { e.stopPropagation(); window.open(imageUrl, '_blank'); });
 			body.appendChild(img);
 			body.appendChild(el('uni-view', 'sky-patch-tip', '点击图片可新窗口打开，长按可保存'));
 		}
 		var box = el('uni-view', 'sky-patch-box');
-		box.appendChild(el('uni-text', 'sky-patch-txt', schedule.text || '今日暂无日程'));
+		box.appendChild(el('uni-text', 'sky-patch-txt', bodyText || '今日暂无内容'));
 		body.appendChild(box);
 
 		sheet.appendChild(head);
@@ -317,7 +316,7 @@
 		card.appendChild(desc);
 		card.addEventListener('click', function (e) {
 			e.stopPropagation();
-			openScheduleSheet();
+			openSheet('日程家具', schedule.image, schedule.text);
 		});
 		strip.appendChild(card);
 		if (schedule) {
@@ -339,4 +338,48 @@
 			ensureCard();
 		})
 		.catch(function () {});
+
+	/* ==========================================================
+	   三、复刻先祖：接口滞后兜底
+	   t1qq /scfk 与倾慕 /rwt/fx 都滞后，只有当天的快照是准的；
+	   快照 available=true 时覆盖卡片的「本期已结束」，点开显示真图 + 文字。
+	   ========================================================== */
+	var fuxian = null;
+
+	function findFuxianCard() {
+		var cards = document.querySelectorAll('.guide-card');
+		for (var i = 0; i < cards.length; i++) {
+			if (cards[i].textContent.indexOf('复刻先祖') > -1 && !cards[i].classList.contains('sky-patch-rl')) return cards[i];
+		}
+		return null;
+	}
+
+	function applyFuxianCard() {
+		if (!fuxian || !fuxian.available) return;
+		var card = findFuxianCard();
+		if (!card || card.dataset.fuxianPatch) return;
+		card.dataset.fuxianPatch = '1';
+		// 新建一个相同的卡片替身，彻底接管点击（原卡片的 Vue 事件无法移除）
+		var repl = card.cloneNode(true);
+		repl.style.cssText = card.style.cssText || '';
+		repl.addEventListener('click', function (e) {
+			e.stopPropagation();
+			openSheet('复刻先祖', fuxian.image, fuxian.text);
+		}, true);
+		card.parentNode.replaceChild(repl, card);
+		var desc = repl.querySelector('.guide-desc');
+		if (desc) desc.textContent = '今日有复刻 · 点击查看';
+	}
+
+	fetch(BASE + '/static/data/fuxian.json')
+		.then(function (r) { return r.ok ? r.json() : null; })
+		.then(function (d) {
+			if (!d || !d.available || !d.image) return;
+			fuxian = d;
+			applyFuxianCard();
+		})
+		.catch(function () {});
+
+	// Vue 重渲染可能换掉卡片，持续兜底
+	setInterval(applyFuxianCard, 1500);
 })();

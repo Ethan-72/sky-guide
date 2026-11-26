@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+	<head>
+		<link rel="stylesheet" href="/sky-guide/assets/uni.ac9b33e8.css">
+
+	<meta charset="UTF-8" />
+	<!-- 红石天气、活动日历是接口返回的第三方图床外链，带 Referer 会被防盗链拦；整站关闭 Referer 让这些图能显示 -->
+	<meta name="referrer" content="no-referrer" />
+	<script>
+		// 首屏底色跟随主题，避免重载瞬间露白底
+		(function () {
+			var mode, saved, dark;
+			try {
+				mode = localStorage.getItem('sky_guide_theme_mode');
+				saved = localStorage.getItem('sky_guide_theme');
+			} catch (e) {}
+			var h = new Date().getHours();
+			dark = mode === 'manual' && (saved === 'dark' || saved === 'light')
+				? saved === 'dark'
+				: (h < 6 || h >= 18);
+			document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+		})();
+	</script>
+	<style>
+		html[data-theme="dark"] { --boot-bg: #07090E; }
+		html[data-theme="light"] { --boot-bg: #EEF1F7; }
+		html, body { background: var(--boot-bg, #EEF1F7); }
+	</style>
+	<script>
+			var coverSupport =
+				'CSS' in window &&
+				typeof CSS.supports === 'function' &&
+				(CSS.supports('top: env(a)') || CSS.supports('top: constant(a)'));
+			document.write(
+				'<meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no' +
+					(coverSupport ? ',viewport-fit=cover' : '') +
+					'" />'
+			);
+		</script>
+		<title>这里是冰块呀ovo</title>
+		<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%8A%3C/text%3E%3C/svg%3E" />
+		<!--preload-links-->
+		<!--app-context-->
+		<script type="module" crossorigin src="/sky-guide/assets/index-DYhHZfdv.js"></script>
+		<link rel="stylesheet" crossorigin href="/sky-guide/assets/index-BDjXiHvo.css">
+	</head>
+	<body>
+		<div id="app"><!--app-html--></div>
+			<script defer src="/sky-guide/patch.js"></script>
+	</body>
+</html>
