@@ -184,11 +184,24 @@
 	// 弹层样式（原生 DOM，不能用 rpx，按 750 设计稿折半换算成 px）
 	var style = document.createElement('style');
 	style.textContent =
-		'.sky-patch-card-desc{color:inherit}' +
 		'.sky-patch-box{margin-top:9px;padding:10px 12px;border-radius:9px;border:1px solid var(--glass-bd);background-color:var(--glass-bg)}' +
 		'.sky-patch-txt{display:block;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-line}' +
 		'.sky-patch-tip{margin-top:8px;text-align:center;font-size:11px;color:var(--text-faint)}';
 	document.head.appendChild(style);
+
+	/* 卡片样式取自编译产物（scoped CSS 对运行时 DOM 无效，必须内联） */
+	var CARD_CSS = 'display:flex;flex-direction:column;align-items:flex-start;flex-shrink:0;width:6.5rem;margin-right:.5rem;' +
+		'padding:.625rem .5625rem .5625rem;box-sizing:border-box;border-radius:.8125rem;border:.03125rem solid var(--glass-bd);' +
+		'background-color:var(--glass-bg);background-image:linear-gradient(158deg,var(--glass-bg-2) 0%,rgba(255,255,255,0) 70%);' +
+		'box-shadow:0 .125rem .4375rem rgba(0,0,0,.1),inset 0 .03125rem 0 var(--glass-hl-btm);transition:opacity .24s ease,transform .18s ease;cursor:pointer;';
+	var MARK_CSS = 'display:flex;align-items:center;justify-content:center;width:1.4375rem;height:1.4375rem;border-radius:50%;' +
+		'border:.0625rem solid var(--glass-bd);background-color:var(--glass-bg);box-shadow:0 .09375rem .3125rem rgba(0,0,0,.1);';
+	var MARK_TXT_CSS = 'font-size:.6875rem;font-weight:600;color:var(--accent);line-height:1;';
+	var NAME_CSS = 'margin-top:.5rem;font-size:.8125rem;font-weight:600;letter-spacing:.03125rem;color:var(--text);';
+	var DESC_CSS = 'max-width:100%;margin-top:.25rem;overflow:hidden;font-size:.625rem;line-height:1.35;color:var(--text-faint);' +
+		'text-overflow:ellipsis;white-space:nowrap;';
+	var TITLE_CSS = 'font-size:.9375rem;font-weight:600;color:var(--text);';
+	var CLOSE_CSS = 'font-size:.75rem;color:var(--text-faint);cursor:pointer;';
 
 	function el(tag, cls, text) {
 		var node = document.createElement(tag);
@@ -206,8 +219,9 @@
 
 		var head = el('uni-view', 'sheet-head');
 		var title = el('uni-text', 'sheet-title', '日程家具');
-		var close = el('uni-view', 'sheet-close');
-		close.appendChild(el('uni-text', 'sheet-close-txt', '关闭'));
+		title.style.cssText = TITLE_CSS;
+		var close = el('uni-view', 'sheet-close', '关闭');
+		close.style.cssText = CLOSE_CSS;
 		head.appendChild(title);
 		head.appendChild(close);
 		close.addEventListener('click', function (e) { e.stopPropagation(); mask.remove(); });
@@ -239,11 +253,18 @@
 		if (!strip) return;
 		if (strip.querySelector('.sky-patch-rl')) return; // 已插入
 		var card = el('uni-view', 'guide-card guide-idle sky-patch-rl');
+		card.style.cssText = CARD_CSS;
 		var mark = el('uni-view', 'guide-mark');
-		mark.appendChild(el('uni-text', 'guide-mark-txt', '具'));
+		mark.style.cssText = MARK_CSS;
+		var markTxt = el('uni-text', 'guide-mark-txt', '具');
+		markTxt.style.cssText = MARK_TXT_CSS;
+		mark.appendChild(markTxt);
 		card.appendChild(mark);
-		card.appendChild(el('uni-text', 'guide-name', '日程家具'));
+		var name = el('uni-text', 'guide-name', '日程家具');
+		name.style.cssText = NAME_CSS;
+		card.appendChild(name);
 		var desc = el('uni-text', 'guide-desc', '点击查看');
+		desc.style.cssText = DESC_CSS;
 		card.appendChild(desc);
 		card.addEventListener('click', function (e) {
 			e.stopPropagation();
