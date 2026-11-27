@@ -412,12 +412,6 @@
 	}
 
 	var WING_CSS =
-		'.sky-wing-fab{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 182px);z-index:70;' +
-		'width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
-		'border:1px solid var(--glass-bd);background-color:var(--glass-bg);-webkit-backdrop-filter:blur(var(--blur));' +
-		'backdrop-filter:blur(var(--blur));box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hl);cursor:pointer;' +
-		'font-size:17px;font-weight:600;color:var(--text);transition:transform .16s ease}' +
-		'.sky-wing-fab:active{transform:scale(.94)}' +
 		'.sky-wing-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:95;display:none;' +
 		'align-items:flex-end;background-color:rgba(0,0,0,.48)}' +
 		'.sky-wing-mask.on{display:flex}' +
@@ -470,9 +464,6 @@
 	wingStyle.textContent = themeStyle(WING_CSS);
 	document.head.appendChild(wingStyle);
 
-	var wingRoot = el('div', 'sky-wing-root');
-	wingRoot.dataset.skyPatch = '1';
-	var wingFab = el('div', 'sky-wing-fab', '翼');
 	var wingMask = el('div', 'sky-wing-mask');
 	wingMask.dataset.skyPatch = '1';
 	var wingPanel = el('div', 'sky-wing-panel');
@@ -506,9 +497,7 @@
 	wingPanel.appendChild(wingMsg);
 	wingPanel.appendChild(wingResult);
 	wingMask.appendChild(wingPanel);
-	wingRoot.appendChild(wingFab);
-	wingRoot.appendChild(wingMask);
-	document.body.appendChild(wingRoot);
+	document.body.appendChild(wingMask);
 
 	function openWing() {
 		wingStyle.textContent = themeStyle(WING_CSS); // 主题可能已切换，重新取值
@@ -520,7 +509,33 @@
 		wingMask.classList.remove('on');
 		lockScroll(false);
 	}
-	wingFab.addEventListener('click', openWing);
+	/* 入口卡片：插进「更多攻略」横条，和「日程家具」并排 */
+	function ensureWingCard() {
+		var strip = document.querySelector('.guide-strip');
+		if (!strip || strip.querySelector('.sky-patch-wing')) return;
+		var card = el('uni-view', 'guide-card guide-idle sky-patch-wing');
+		card.style.cssText = CARD_CSS;
+		var mark = el('uni-view', 'guide-mark');
+		mark.style.cssText = MARK_CSS;
+		var markTxt = el('uni-text', 'guide-mark-txt', '翼');
+		markTxt.style.cssText = MARK_TXT_CSS;
+		mark.appendChild(markTxt);
+		card.appendChild(mark);
+		var name = el('uni-text', 'guide-name', '光翼查询');
+		name.style.cssText = NAME_CSS;
+		card.appendChild(name);
+		var desc = el('uni-text', 'guide-desc', '长 ID 查收集进度');
+		desc.style.cssText = DESC_CSS;
+		card.appendChild(desc);
+		card.addEventListener('click', function (e) {
+			e.stopPropagation();
+			openWing();
+		});
+		strip.appendChild(card);
+	}
+	setInterval(ensureWingCard, 1500);
+	ensureWingCard();
+
 	wingClose.addEventListener('click', closeWing);
 	wingMask.addEventListener('click', function (e) {
 		if (e.target === wingMask) closeWing();
