@@ -650,4 +650,285 @@
 	wingInput.addEventListener('keydown', function (e) {
 		if (e.key === 'Enter') queryWing();
 	});
+	/* ==========================================================
+	   五、礼包查询
+	   · 「查询指引」：礼包明细没有免费公开网页接口（数据在游戏服务器内），
+	     引导用主流小程序（上游大神 / sky小白身高）+ 游戏「原ID」查询
+	   · 「自己算礼包」：内置礼包价目清单（BWiki 礼包图鉴，2019-2026），
+	     勾选已购实时统计花费与数量，勾选结果存 localStorage
+	   ========================================================== */
+	var GIFT_DATA = [["中国绊爱礼服套装礼包",128,"2026"],["云音伴游耳机礼包",68,"2026"],["向日葵耳饰礼包",18,"2026"],["向日葵花瓣裙礼包",68,"2026"],["向阳花伞礼包",98,"2026"],["回归童真礼包",12,"2026"],["墨镜头饰礼包",18,"2026"],["夏日派对礼包",25,"2026"],["夏日潜水套装礼包",68,"2026"],["宝骏丹心马尾礼包",30,"2026"],["寻宝搭档礼包",18,"2026"],["小恶魔斗篷礼包",98,"2026"],["小狗拖鞋礼包",30,"2026"],["小黄鸭玩偶服礼包",68,"2026"],["小黑鸭头饰礼包",6,"2026"],["幸运亨通眼镜礼包",12,"2026"],["弦音抱月礼包",98,"2026"],["彩虹阔腿裤礼包",68,"2026"],["探宝翎羽帽礼包",68,"2026"],["星夜伞礼包",98,"2026"],["星夜披风套装礼包",168,"2026"],["星月耳环礼包",30,"2026"],["星河烂漫礼包",68,"2026"],["星流面具礼包",18,"2026"],["海灵套装礼包",98,"2026"],["潮流连帽斗篷礼包",98,"2026"],["琅骏启岁长裙礼包",68,"2026"],["皮皮猫肩饰礼包",18,"2026"],["秘宝坠饰斗篷礼包",98,"2026"],["粽香蒸笼礼包",45,"2026"],["紫框眼镜礼包",18,"2026"],["绘彩面具礼包",30,"2026"],["绿茸茸卷耳发饰礼包",18,"2026"],["缀黄画笔发箍礼包",18,"2026"],["花钿素纱礼包",18,"2026"],["莲华拂影礼包",68,"2026"],["萌新玩偶礼包",30,"2026"],["蓝色守护帽礼包",18,"2026"],["诡趣魔法帽礼包",68,"2026"],["金穗披肩斗篷礼包",98,"2026"],["鎏金魔法帽礼包",30,"2026"],["锦标赛晶翼斗篷礼包",98,"2026"],["锦标赛滑冰套装礼包",128,"2026"],["飞鸟肩带礼包",45,"2026"],["骐骥迎福礼包",128,"2026"],["鸦渡麦浪斗篷礼包",98,"2026"],["光之生物礼服套装礼包",68,"2025"],["冥龙套装礼包",78,"2025"],["周年影院套餐礼包",30,"2025"],["周年礼服斗篷礼包",98,"2025"],["宝藏猎人礼包",98,"2025"],["小海牛配饰礼包",25,"2025"],["小黄鸭发饰礼包",6,"2025"],["小黄鸭雨衣套装礼包",98,"2025"],["心心相印发饰礼包",18,"2025"],["必胜客联动分享披萨背饰礼包",45,"2025"],["必胜客联动装扮礼包",68,"2025"],["日光水母套装礼包",98,"2025"],["暖冬围巾斗篷礼包",98,"2025"],["暖冬绒绒礼包",45,"2025"],["暗陨斗篷礼包",98,"2025"],["活力海牛礼包",68,"2025"],["海牛玩偶礼包",45,"2025"],["渐变双马尾发型礼包",45,"2025"],["潮汐套装礼包",168,"2025"],["献瑞折扇礼包",30,"2025"],["玫瑰褶边斗篷礼包",98,"2025"],["皮皮猫套装礼包",78,"2025"],["粽子发饰礼包",18,"2025"],["纤云弄巧礼包",98,"2025"],["线框斗篷礼包",128,"2025"],["缤纷飘带斗篷礼包",98,"2025"],["蝴蝶与花发饰礼包",18,"2025"],["衔福献瑞礼包",128,"2025"],["记忆水晶礼包",168,"2025"],["超凡风之旅人礼包",168,"2025"],["雪人头饰礼包",12,"2025"],["青衫落拓礼包",30,"2025"],["鸦羽兜帽礼包",30,"2025"],["鹊桥相会礼包",98,"2025"],["仙境茶会门扉礼包",128,"2024"],["优雅三件套礼包",98,"2024"],["史力奇套装礼包",68,"2024"],["史力奇帽子礼包",30,"2024"],["向日葵连衣裙礼包",45,"2024"],["周年线框斗篷礼包",128,"2024"],["大耳狗抱枕礼包",98,"2024"],["大耳狗服饰礼包",98,"2024"],["大耳狗装扮礼包",98,"2024"],["姆明妈妈手作斗篷礼包",168,"2024"],["姆明饰品套装礼包",78,"2024"],["小狗周年头饰礼包",30,"2024"],["异彩莲花斗篷礼包",128,"2024"],["彩虹泡泡机礼包",98,"2024"],["恶作剧飞行扫帚礼包",128,"2024"],["恶作剧鸦羽斗篷礼包",118,"2024"],["挂肩外袍礼包",68,"2024"],["日光耳环礼包",18,"2024"],["月华霓裳礼包",98,"2024"],["树精肩饰礼包",18,"2024"],["浪漫流星斗篷礼包",118,"2024"],["海蓝波浪发型礼包",45,"2024"],["满月耳坠礼包",18,"2024"],["爱丽丝围裙套装礼包",78,"2024"],["盘龙围巾斗篷礼包",98,"2024"],["神鹿祝福头饰礼包",98,"2024"],["立式钢琴礼包",30,"2024"],["肯德基联动礼包",128,"2024"],["荷叶伞礼包",98,"2024"],["进行曲制服礼包",68,"2024"],["迷你大耳狗发饰礼包",45,"2024"],["遥鲲披肩斗篷礼包",98,"2024"],["金鳞耳坠礼包",12,"2024"],["锦标赛桂冠礼包",30,"2024"],["风之旅人礼包",168,"2024"],["飞鸟纸伞礼包",98,"2024"],["龙鳞束身长袍礼包",68,"2024"],["优雅领巾礼包",30,"2023"],["凯旋手碟礼包",128,"2023"],["凯旋提琴礼包",128,"2023"],["古典音乐桌椅礼包",128,"2023"],["吸蟹伯爵斗篷礼包",98,"2023"],["吸蟹伯爵面具礼包",18,"2023"],["周年庆抱枕礼包",68,"2023"],["园丁装扮礼包",68,"2023"],["夏日冲浪礼包",98,"2023"],["夏日凉鞋礼包",68,"2023"],["夏日有友礼包",68,"2023"],["惊喜手杖礼包",98,"2023"],["文雀装扮礼包",68,"2023"],["时尚火焰墨镜礼包",18,"2023"],["时尚爱心墨镜礼包",30,"2023"],["暖冬夹棉斗篷礼包",98,"2023"],["暗彩装扮礼包",98,"2023"],["海龟斗篷礼包",98,"2023"],["灯笼礼包",98,"2023"],["玉兔拖鞋礼包",45,"2023"],["玉兔礼包",18,"2023"],["祥云瑞气服饰礼包",68,"2023"],["祥云瑞气纸伞礼包",98,"2023"],["自然之声礼包",30,"2023"],["蛛丝斗篷礼包",98,"2023"],["跃动跑鞋礼包",45,"2023"],["野餐礼包",128,"2023"],["阔腿牛仔裤礼包",68,"2023"],["雏鸟之琴礼包",30,"2023"],["雪人暖心靴礼包",45,"2023"],["音韵吉他礼包",98,"2023"],["飞蛾装扮礼包",68,"2023"],["优雅小憩茶桌礼包",128,"2022"],["保暖雪人斗篷礼包",98,"2022"],["周年庆电吉他礼包",198,"2022"],["奉献斗篷礼包",98,"2022"],["奔离远行发型礼包",18,"2022"],["奔离远行服饰礼包",68,"2022"],["年年有鱼礼包",128,"2022"],["彩虹耳机礼包",68,"2022"],["彩虹耳饰礼包",18,"2022"],["情人小船礼包",128,"2022"],["星月头冠礼包",30,"2022"],["欧若拉之声礼包",98,"2022"],["欧若拉之翼礼包",168,"2022"],["球赛礼包",98,"2022"],["皮皮猫礼包",68,"2022"],["皮皮猫装扮礼包",128,"2022"],["致爱装扮礼包",68,"2022"],["鲤跃龙门礼包",12,"2022"],["万圣节礼包",198,"2021"],["冥龙南瓜礼包",12,"2021"],["夏日阳伞礼包",128,"2021"],["多彩绒绒帽礼包",68,"2021"],["大桔大利礼包",6,"2021"],["女巫帽礼包",68,"2021"],["小王子围巾礼包",98,"2021"],["小王子小行星斗篷礼包",168,"2021"],["小王子狐狸礼包",68,"2021"],["巫树犄角礼包",68,"2021"],["情人秋千礼包",128,"2021"],["情人跷跷板礼包",128,"2021"],["新春福娃礼包",168,"2021"],["暖冬瑞雪礼包",98,"2021"],["清香粽叶礼包",98,"2021"],["温暖绒帽礼包",68,"2021"],["疯女巫长裙礼包",68,"2021"],["花憩茶桌礼包",128,"2021"],["蛛网斗篷礼包",98,"2021"],["蛛网朋克礼包",30,"2021"],["贝壳发夹礼包",6,"2021"],["中国绊爱大铁头礼包",98,"2020"],["中国绊爱套装礼包",128,"2020"],["创始人礼包",30,"2019"],["合伙人礼包",198,"2019"]];
+
+	var GIFT_CSS = WING_CSS.replace(/sky-wing-/g, 'sky-gift-') +
+		'.sky-gift-tabs{display:flex;gap:8px;margin-bottom:10px}' +
+		'.sky-gift-tab{flex:1;height:34px;border-radius:12px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;padding:0}' +
+		'.sky-gift-tab.on{color:var(--btn-txt);border-color:transparent;background:linear-gradient(120deg,var(--btn-a),var(--btn-b))}' +
+		'.sky-gift-pane{display:none}.sky-gift-pane.on{display:block}' +
+		'.sky-gift-stat{display:flex;gap:8px;margin-top:2px}' +
+		'.sky-gift-list{margin-top:10px;border:1px solid var(--glass-bd);border-radius:14px;' +
+		'background-color:var(--glass-bg-2);max-height:44vh;overflow-y:auto;-webkit-overflow-scrolling:touch}' +
+		'.sky-gift-item{display:flex;align-items:center;gap:8px;padding:8px 10px;' +
+		'border-bottom:1px solid var(--line);font-size:12px;cursor:pointer}' +
+		'.sky-gift-item:last-child{border-bottom:0}' +
+		'.sky-gift-ck{width:16px;height:16px;flex-shrink:0;border-radius:5px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg);position:relative;box-sizing:border-box}' +
+		'.sky-gift-ck:after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;' +
+		'border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);opacity:0}' +
+		'.sky-gift-item.on .sky-gift-ck{border-color:transparent;background:linear-gradient(120deg,var(--btn-a),var(--btn-b))}' +
+		'.sky-gift-item.on .sky-gift-ck:after{opacity:1}' +
+		'.sky-gift-nm{flex:1;min-width:0;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+		'.sky-gift-item.on .sky-gift-nm{color:var(--text);font-weight:600}' +
+		'.sky-gift-pr{flex-shrink:0;font-size:11px;color:var(--text-faint)}' +
+		'.sky-gift-yr{margin:10px 2px 2px;font-size:11px;font-weight:600;color:var(--accent)}' +
+		'.sky-gift-step{font-size:11px;line-height:1.7;color:var(--text-dim);white-space:pre-line}' +
+		'.sky-gift-step b{color:var(--accent);font-weight:600}' +
+		'.sky-gift-tool{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;' +
+		'padding:10px 12px;border-radius:14px;border:1px solid var(--glass-bd);background-color:var(--glass-bg-2)}' +
+		'.sky-gift-tool .t{font-size:12px;font-weight:600;color:var(--text)}' +
+		'.sky-gift-tool .d{font-size:10px;color:var(--text-faint);margin-top:2px}' +
+		'.sky-gift-clear{margin-top:10px;width:100%;height:34px;border-radius:12px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);font-size:11px;color:#FF8A8A;cursor:pointer;padding:0}' +
+		'.sky-gift-search{width:100%;height:36px;box-sizing:border-box;margin-top:10px;padding:0 12px;' +
+		'border-radius:12px;border:1px solid var(--glass-bd);background-color:var(--glass-bg-2);' +
+		'color:var(--text);font-size:12px;outline:none}';
+
+	var giftStyle = document.createElement('style');
+	giftStyle.textContent = themeStyle(GIFT_CSS);
+	document.head.appendChild(giftStyle);
+
+	var giftMask = el('div', 'sky-gift-mask');
+	giftMask.dataset.skyPatch = '1';
+	var giftPanel = el('div', 'sky-gift-panel');
+	var giftGrip = el('div', 'sky-gift-grip');
+	var giftHead = el('div', 'sky-gift-head');
+	var giftTitle = el('div', 'sky-gift-title', '礼包查询');
+	var giftClose = el('div', 'sky-gift-close', '关闭');
+	giftHead.appendChild(giftTitle);
+	giftHead.appendChild(giftClose);
+
+	var giftTabs = el('div', 'sky-gift-tabs');
+	var tabGuide = document.createElement('button');
+	tabGuide.type = 'button';
+	tabGuide.className = 'sky-gift-tab on';
+	tabGuide.textContent = '查询指引';
+	var tabCalc = document.createElement('button');
+	tabCalc.type = 'button';
+	tabCalc.className = 'sky-gift-tab';
+	tabCalc.textContent = '自己算礼包';
+	giftTabs.appendChild(tabGuide);
+	giftTabs.appendChild(tabCalc);
+
+	var paneGuide = el('div', 'sky-gift-pane on');
+	var paneCalc = el('div', 'sky-gift-pane');
+
+	/* —— 页一：查询指引 —— */
+	var guideStep = el('div', 'sky-gift-step');
+	guideStep.innerHTML =
+		'礼包明细数据在游戏服务器里，目前没有免费公开接口能在网页直接查。\n' +
+		'<b>主流查法：</b>微信搜小程序「上游大神」或「sky小白身高」，粘贴<b>原 ID（长 ID）</b>' +
+		'即可查已购礼包、花费与缺少明细。\n' +
+		'<b>拿原 ID：</b>游戏内 设置 → 精灵 → 工具指南 → 查询ID → 复制「原ID」（带横杠的长 ID）。';
+
+	function giftTool(name, desc) {
+		var box = el('div', 'sky-gift-tool');
+		var info = el('div');
+		info.appendChild(el('div', 't', name));
+		info.appendChild(el('div', 'd', desc));
+		var btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'sky-wing-copy';
+		btn.textContent = '复制名称';
+		btn.style.cssText = 'flex-shrink:0;border:0';
+		btn.addEventListener('click', function (e) {
+			e.stopPropagation();
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(name).then(function () {
+					btn.textContent = '已复制';
+					setTimeout(function () { btn.textContent = '复制名称'; }, 1600);
+				}).catch(function () {});
+			}
+		});
+		box.appendChild(info);
+		box.appendChild(btn);
+		return box;
+	}
+	paneGuide.appendChild(guideStep);
+	paneGuide.appendChild(giftTool('上游大神', '公众号 / 小程序 · 查已购礼包明细与花费'));
+	paneGuide.appendChild(giftTool('sky小白身高', '小程序 · 国服 / 国际服礼包文字版与图片版'));
+
+	/* —— 页二：自己算礼包 —— */
+	var giftStat = el('div', 'sky-gift-stat');
+	var chipB = el('div', 'sky-gift-chip');
+	var statN = el('span', 'sky-gift-chipv', '0');
+	chipB.appendChild(statN);
+	chipB.appendChild(el('span', 'sky-gift-chipk', '已购 / 全部'));
+	var chipS = el('div', 'sky-gift-chip');
+	var statS = el('span', 'sky-gift-chipv', '¥0');
+	chipS.appendChild(statS);
+	chipS.appendChild(el('span', 'sky-gift-chipk', '已购花费'));
+	var chipR = el('div', 'sky-gift-chip');
+	var statR = el('span', 'sky-gift-chipv', '¥0');
+	chipR.appendChild(statR);
+	chipR.appendChild(el('span', 'sky-gift-chipk', '全收集还需'));
+	giftStat.appendChild(chipB);
+	giftStat.appendChild(chipS);
+	giftStat.appendChild(chipR);
+
+	var giftSearch = document.createElement('input');
+	giftSearch.className = 'sky-gift-search';
+	giftSearch.type = 'text';
+	giftSearch.placeholder = '搜礼包名，如：斗篷 / 玉兔';
+	giftSearch.setAttribute('autocomplete', 'off');
+
+	var giftList = el('div', 'sky-gift-list');
+	var giftClear = document.createElement('button');
+	giftClear.type = 'button';
+	giftClear.className = 'sky-gift-clear';
+	giftClear.textContent = '清空已选';
+	var calcNote = el('div', 'sky-gift-hint');
+	calcNote.innerHTML = '清单与价格为参考值（BWiki 礼包图鉴，2019-2026 共 ' + GIFT_DATA.length +
+		' 款），新礼包可能未收录；勾选结果保存在本机浏览器。';
+
+	paneCalc.appendChild(giftStat);
+	paneCalc.appendChild(giftSearch);
+	paneCalc.appendChild(giftList);
+	paneCalc.appendChild(giftClear);
+	paneCalc.appendChild(calcNote);
+
+	giftPanel.appendChild(giftGrip);
+	giftPanel.appendChild(giftHead);
+	giftPanel.appendChild(giftTabs);
+	giftPanel.appendChild(paneGuide);
+	giftPanel.appendChild(paneCalc);
+	giftMask.appendChild(giftPanel);
+	document.body.appendChild(giftMask);
+
+	function openGift() {
+		giftStyle.textContent = themeStyle(GIFT_CSS); // 主题可能已切换，重新取值
+		giftMask.classList.add('on');
+		lockScroll(true);
+	}
+	function closeGift() {
+		giftMask.classList.remove('on');
+		lockScroll(false);
+	}
+	giftClose.addEventListener('click', closeGift);
+	giftMask.addEventListener('click', function (e) {
+		if (e.target === giftMask) closeGift();
+	});
+	giftPanel.addEventListener('touchmove', function (e) {
+		if (giftPanel.scrollHeight > giftPanel.clientHeight) return;
+		e.preventDefault();
+	});
+
+	function setGiftTab(which) {
+		var guide = which === 'guide';
+		tabGuide.classList.toggle('on', guide);
+		tabCalc.classList.toggle('on', !guide);
+		paneGuide.classList.toggle('on', guide);
+		paneCalc.classList.toggle('on', !guide);
+	}
+	tabGuide.addEventListener('click', function () { setGiftTab('guide'); });
+	tabCalc.addEventListener('click', function () { setGiftTab('calc'); });
+
+	var SEL_KEY = 'sky_guide_gift_sel_v1';
+	var giftSel = {};
+	try { giftSel = JSON.parse(localStorage.getItem(SEL_KEY) || '{}') || {}; } catch (e) { giftSel = {}; }
+
+	function saveSel() {
+		try { localStorage.setItem(SEL_KEY, JSON.stringify(giftSel)); } catch (e) {}
+	}
+	function updStat() {
+		var n = 0, sum = 0;
+		GIFT_DATA.forEach(function (g) {
+			if (giftSel[g[0]]) { n++; sum += g[1]; }
+		});
+		statN.textContent = n + ' / ' + GIFT_DATA.length;
+		statS.textContent = '¥' + sum;
+		statR.textContent = '¥' + (GIFT_DATA.reduce(function (a, g) { return a + g[1]; }, 0) - sum);
+	}
+	function renderList() {
+		var kw = (giftSearch.value || '').trim().toLowerCase();
+		var html = '';
+		var lastYr = '';
+		GIFT_DATA.forEach(function (g) {
+			if (kw && g[0].toLowerCase().indexOf(kw) < 0) return;
+			if (g[2] !== lastYr) {
+				lastYr = g[2];
+				html += '<div class="sky-gift-yr">' + escWing(g[2]) + ' 年</div>';
+			}
+			html += '<div class="sky-gift-item' + (giftSel[g[0]] ? ' on' : '') +
+				'" data-n="' + escWing(g[0]) + '">' +
+				'<span class="sky-gift-ck"></span>' +
+				'<span class="sky-gift-nm">' + escWing(g[0]) + '</span>' +
+				'<span class="sky-gift-pr">¥' + g[1] + '</span></div>';
+		});
+		giftList.innerHTML = html ||
+			'<div class="sky-gift-item" style="cursor:default"><span class="sky-gift-nm">没找到匹配的礼包</span></div>';
+	}
+	giftList.addEventListener('click', function (e) {
+		var it = e.target.closest ? e.target.closest('.sky-gift-item') : null;
+		if (!it || !it.dataset.n) return;
+		var n = it.dataset.n;
+		if (giftSel[n]) delete giftSel[n];
+		else giftSel[n] = 1;
+		it.classList.toggle('on', !!giftSel[n]);
+		saveSel();
+		updStat();
+	});
+	var searchTimer = 0;
+	giftSearch.addEventListener('input', function () {
+		clearTimeout(searchTimer);
+		searchTimer = setTimeout(renderList, 120);
+	});
+	var clearArm = 0;
+	giftClear.addEventListener('click', function () {
+		if (!Object.keys(giftSel).length) return;
+		if (!clearArm) {
+			clearArm = 1;
+			giftClear.textContent = '再点一次确认清空';
+			setTimeout(function () {
+				clearArm = 0;
+				giftClear.textContent = '清空已选';
+			}, 2600);
+			return;
+		}
+		clearArm = 0;
+		giftSel = {};
+		saveSel();
+		giftClear.textContent = '清空已选';
+		renderList();
+		updStat();
+	});
+
+	/* 入口卡片：插进「更多攻略」横条，与光翼查询并排 */
+	function ensureGiftCard() {
+		var strip = document.querySelector('.guide-strip');
+		if (!strip || strip.querySelector('.sky-patch-gift')) return;
+		var card = el('uni-view', 'guide-card guide-idle sky-patch-gift');
+		card.style.cssText = CARD_CSS;
+		var mark = el('uni-view', 'guide-mark');
+		mark.style.cssText = MARK_CSS;
+		var markTxt = el('uni-text', 'guide-mark-txt', '礼');
+		markTxt.style.cssText = MARK_TXT_CSS;
+		mark.appendChild(markTxt);
+		card.appendChild(mark);
+		var name = el('uni-text', 'guide-name', '礼包查询');
+		name.style.cssText = NAME_CSS;
+		card.appendChild(name);
+		var desc = el('uni-text', 'guide-desc', '清单自算 + 查询指引');
+		desc.style.cssText = DESC_CSS;
+		card.appendChild(desc);
+		card.addEventListener('click', function (e) {
+			e.stopPropagation();
+			openGift();
+		});
+		strip.appendChild(card);
+	}
+	setInterval(ensureGiftCard, 1500);
+	ensureGiftCard();
+
+	renderList();
+	updStat();
 })();
