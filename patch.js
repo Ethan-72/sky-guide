@@ -359,6 +359,10 @@
 
 	function applyFuxianCard() {
 		if (!fuxian || !fuxian.available) return;
+		/* 快照日期必须是今天：防止快照未更新时，过期数据一直顶着「今日有复刻」 */
+		var _t = new Date();
+		var _today = '' + _t.getFullYear() + ('0' + (_t.getMonth() + 1)).slice(-2) + ('0' + _t.getDate()).slice(-2);
+		if (String(fuxian.date || '') !== _today) return;
 		var card = findFuxianCard();
 		if (!card || card.dataset.fuxianPatch) return;
 		card.dataset.fuxianPatch = '1';
@@ -861,10 +865,12 @@
 				lastYr = g[2];
 				html += '<div class="sky-gift-yr">' + escWing(g[2]) + ' 年</div>';
 			}
+			var _im = g[4] || (g[3] ? BASE + '/img/gifts/' + escWing(g[3]) : '');
+			var _fb = (g[4] && g[3]) ? BASE + '/img/gifts/' + escWing(g[3]) : '';
 			html += '<div class="sky-gift-item' + (giftSel[g[0]] ? ' on' : '') +
 				'" data-n="' + escWing(g[0]) + '">' +
-				(g[3] ? '<img class="sky-gift-im" loading="lazy" src="' + BASE + '/img/gifts/' + escWing(g[3]) +
-					'" data-fb="' + escWing(g[4] || '') +
+				(_im ? '<img class="sky-gift-im" loading="lazy" src="' + _im +
+					'" data-fb="' + escWing(_fb) +
 					'" alt="" onerror="var f=this.dataset.fb;if(f){this.src=f;this.dataset.fb=\'\'}else{this.style.display=\'none\'}">' : '') +
 				'<span class="sky-gift-ck"></span>' +
 				'<span class="sky-gift-nm">' + escWing(g[0]) + '</span>' +
