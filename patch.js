@@ -941,6 +941,290 @@
 	setInterval(ensureGiftCard, 1500);
 	ensureGiftCard();
 
+	/* ==========================================================
+	   六、身高扫码：本地解析穿搭二维码
+	   游戏内「设置 → 更多 → 线下活动外观二维码」，截图上传后在浏览器本地解析。
+	   o= 参数 → base64url → LZ4 解压 → JSON → scale/height → 身高公式。
+	   全程不上传任何数据；库按需从 CDN 加载，首屏不受影响。
+	   ========================================================== */
+	var QR_LIB_URLS = [
+		'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js',
+		'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'
+	];
+	var qrLibPromise = null;
+
+	function loadQrLib() {
+		if (window.jsQR) return Promise.resolve(true);
+		if (qrLibPromise) return qrLibPromise;
+		qrLibPromise = new Promise(function (resolve) {
+			var i = 0;
+			function tryNext() {
+				if (i >= QR_LIB_URLS.length) { qrLibPromise = null; resolve(false); return; }
+				var s = document.createElement('script');
+				s.src = QR_LIB_URLS[i++];
+				s.onload = function () { resolve(!!window.jsQR); };
+				s.onerror = tryNext;
+				document.head.appendChild(s);
+			}
+			tryNext();
+		});
+		return qrLibPromise;
+	}
+
+	/* LZ4 block 解压：标准公开算法，自写实现 */
+	function lz4Decompress(data) {
+		var len = data.length, pos = 0, out = [];
+		while (pos < len) {
+			var token = data[pos++];
+			var litLen = (token >> 4) & 15;
+			var matchLen = token & 15;
+			if (litLen === 15) {
+				for (;;) {
+					if (pos >= len) throw new Error('数据不完整');
+					var b = data[pos++]; litLen += b;
+					if (b !== 255) break;
+				}
+			}
+			if (pos + litLen > len) throw new Error('数据不完整');
+			for (var i = 0; i < litLen; i++) out.push(data[pos++]);
+			if (pos >= len) break;
+			if (pos + 2 > len) throw new Error('数据不完整');
+			var off = data[pos] | (data[pos + 1] << 8);
+			pos += 2;
+			if (!off || off > out.length) throw new Error('数据格式异常');
+			matchLen += 4;
+			if ((token & 15) === 15) {
+				for (;;) {
+					if (pos >= len) throw new Error('数据不完整');
+					var b2 = data[pos++]; matchLen += b2;
+					if (b2 !== 255) break;
+				}
+			}
+			var srcPos = out.length - off;
+			for (var j = 0; j < matchLen; j++) out.push(out[srcPos++]);
+		}
+		return new Uint8Array(out);
+	}
+
+	function b64urlToBytes(s) {
+		var t = String(s).replace(/-/g, '+').replace(/_/g, '/');
+		while (t.length % 4) t += '=';
+		var bin = atob(t);
+		var arr = new Uint8Array(bin.length);
+		for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+		return arr;
+	}
+
+	/* 高精度身高计算：整体放大 100 倍，用整数运算避免浮点误差 */
+	function calcSkyHeight(scale, height) {
+		var S = Math.round(Number(scale) * 10);
+		var H = Math.round(Number(height) * 10);
+		if (!isFinite(S) || !isFinite(H)) throw new Error('身高数据异常');
+		// 7.6 - 8.3*s - 3*h，放大 1000 倍：7600 - 83*S*? 
+		// s = S/10, h = H/10 → 7.6 - 0.83*S - 0.3*H → ×1000 = 7600 - 830*S - 300*H
+		var cur = 7600 - 830 * S - 300 * H;
+		var hMax = 7600 - 830 * S - 300 * 20;   // h=+2
+		var hMin = 7600 - 830 * S - 300 * (-20); // h=-2
+		function fmt(v) { return (v >= 0 ? '' : '-') + (Math.abs(v) / 1000).toFixed(2); }
+		return {
+			current: fmt(cur),
+			max: fmt(hMax),
+			min: fmt(hMin),
+			num: Math.floor(cur / 1000)
+		};
+	}
+
+	function parseSkyQr(text) {
+		var raw = String(text || '').trim();
+		var o = null;
+		try {
+			var url = new URL(raw);
+			o = url.searchParams.get('o');
+		} catch (e) {}
+		if (!o) o = raw; // 兼容直接就是 base64url 字符串的情况
+		if (!o) throw new Error('二维码里没有身高数据');
+		var raw = b64urlToBytes(o);
+		var jsonBytes = lz4Decompress(raw);
+		var json = '';
+		for (var i = 0; i < jsonBytes.length; i++) json += String.fromCharCode(jsonBytes[i]);
+		// UTF-8 解码
+		var utf8;
+		try { utf8 = decodeURIComponent(escape(json)); } catch (e) { utf8 = json; }
+		var data;
+		try { data = JSON.parse(utf8); } catch (e) { throw new Error('数据解析失败'); }
+		var s = data.scale != null ? data.scale : data.s;
+		var h = data.height != null ? data.height : data.h;
+		if (s == null || h == null) throw new Error('数据缺少身高字段');
+		return calcSkyHeight(s, h);
+	}
+
+	/* 弹层 */
+	var heightCss = WING_CSS.replace(/sky-wing-/g, 'sky-height-') +
+		'.sky-height-drop{margin:10px 0;padding:18px 12px;border:2px dashed var(--glass-bd);' +
+		'border-radius:16px;text-align:center;font-size:12px;color:var(--text-dim);cursor:pointer;' +
+		'background-color:var(--glass-bg-2)}' +
+		'.sky-height-drop.on{border-color:var(--accent);color:var(--accent)}' +
+		'.sky-height-file{display:none}' +
+		'.sky-height-res{margin-top:12px;padding:14px;border-radius:16px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);text-align:center}' +
+		'.sky-height-big{font-size:30px;font-weight:700;color:var(--accent)}' +
+		'.sky-height-lbl{font-size:11px;color:var(--text-dim)}' +
+		'.sky-height-grid{display:flex;gap:8px;margin-top:10px}' +
+		'.sky-height-cell{flex:1;padding:9px 4px;border-radius:12px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg)}' +
+		'.sky-height-cell b{display:block;font-size:16px;color:var(--text)}' +
+		'.sky-height-cell span{font-size:10px;color:var(--text-faint)}' +
+		'.sky-height-steps{margin-top:12px;font-size:11px;line-height:1.8;color:var(--text-dim)}' +
+		'.sky-height-steps b{color:var(--accent)}';
+	var heightStyle = document.createElement('style');
+	heightStyle.textContent = themeStyle(heightCss);
+	document.head.appendChild(heightStyle);
+
+	var heightMask = el('div', 'sky-height-mask');
+	heightMask.dataset.skyPatch = '1';
+	var heightPanel = el('div', 'sky-height-panel');
+	var heightGrip = el('div', 'sky-height-grip');
+	var heightHead = el('div', 'sky-height-head');
+	heightHead.appendChild(el('div', 'sky-height-title', '身高扫码'));
+	var heightClose = el('div', 'sky-height-close', '关闭');
+	heightHead.appendChild(heightClose);
+	var heightHint = el('div', 'sky-height-hint');
+	heightHint.innerHTML = '<b>不用加好友、不用密钥、不消耗点数。</b>\n' +
+		'游戏内点「设置 → 更多 → 线下活动外观二维码」，截图后上传，这里在本地解析出身高。图片不会上传。';
+	var heightDrop = el('div', 'sky-height-drop', '点击上传二维码截图（支持 PNG / JPG / WebP）');
+	var heightFile = document.createElement('input');
+	heightFile.type = 'file';
+	heightFile.accept = 'image/*';
+	heightFile.className = 'sky-height-file';
+	var heightMsg = el('div', 'sky-height-msg', '');
+	var heightRes = el('div', 'sky-height-res');
+	heightRes.style.display = 'none';
+	var heightSteps = el('div', 'sky-height-steps');
+	heightSteps.innerHTML =
+		'<b>找不到二维码？</b><br>' +
+		'游戏内：设置 → 更多 → 线下活动外观二维码，等图片加载出来后截图。<br>' +
+		'数值越小代表角色越高；公式来自社区公开数据，仅供娱乐参考。';
+	heightPanel.appendChild(heightGrip);
+	heightPanel.appendChild(heightHead);
+	heightPanel.appendChild(heightHint);
+	heightPanel.appendChild(heightDrop);
+	heightPanel.appendChild(heightFile);
+	heightPanel.appendChild(heightMsg);
+	heightPanel.appendChild(heightRes);
+	heightPanel.appendChild(heightSteps);
+	heightMask.appendChild(heightPanel);
+	document.body.appendChild(heightMask);
+
+	function openHeight() {
+		heightStyle.textContent = themeStyle(heightCss);
+		heightMask.classList.add('on');
+		lockScroll(true);
+	}
+	function closeHeight() {
+		heightMask.classList.remove('on');
+		lockScroll(false);
+	}
+	heightClose.addEventListener('click', closeHeight);
+	heightMask.addEventListener('click', function (e) {
+		if (e.target === heightMask) closeHeight();
+	});
+	heightPanel.addEventListener('touchmove', function (e) {
+		if (heightPanel.scrollHeight > heightPanel.clientHeight) return;
+		e.preventDefault();
+	}, { passive: false });
+	heightDrop.addEventListener('click', function () { heightFile.click(); });
+	heightDrop.addEventListener('dragover', function (e) {
+		e.preventDefault(); heightDrop.classList.add('on');
+	});
+	heightDrop.addEventListener('dragleave', function () { heightDrop.classList.remove('on'); });
+	heightDrop.addEventListener('drop', function (e) {
+		e.preventDefault(); heightDrop.classList.remove('on');
+		if (e.dataTransfer && e.dataTransfer.files[0]) handleHeightFile(e.dataTransfer.files[0]);
+	});
+	heightFile.addEventListener('change', function () {
+		if (heightFile.files[0]) handleHeightFile(heightFile.files[0]);
+	});
+
+	function setHeightMsg(text, isErr) {
+		heightMsg.textContent = text || '';
+		heightMsg.className = 'sky-height-msg' + (isErr ? ' err' : '');
+	}
+
+	function renderHeightResult(r) {
+		heightRes.innerHTML =
+			'<div class="sky-height-lbl">当前身高（数值越小越高）</div>' +
+			'<div class="sky-height-big">' + escWing(r.current) + '</div>' +
+			'<div class="sky-height-lbl">号数 ' + escWing(r.num) + '</div>' +
+			'<div class="sky-height-grid">' +
+			'<div class="sky-height-cell"><b>' + escWing(r.min) + '</b><span>最高可达</span></div>' +
+			'<div class="sky-height-cell"><b>' + escWing(r.max) + '</b><span>最低可达</span></div>' +
+			'</div>';
+		heightRes.style.display = '';
+	}
+
+	async function handleHeightFile(file) {
+		if (!/^image\//.test(file.type)) { setHeightMsg('请上传图片文件', true); return; }
+		setHeightMsg('正在识别二维码…');
+		heightRes.style.display = 'none';
+		var ok = await loadQrLib();
+		if (!ok) { setHeightMsg('识别组件加载失败，请检查网络后重试', true); return; }
+		try {
+			var url = URL.createObjectURL(file);
+			var img = new Image();
+			await new Promise(function (resolve, reject) {
+				img.onload = resolve;
+				img.onerror = function () { reject(new Error('图片读取失败')); };
+				img.src = url;
+			});
+			var maxSide = 1600;
+			var scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+			var w = Math.max(1, Math.round(img.width * scale));
+			var h = Math.max(1, Math.round(img.height * scale));
+			var cv = document.createElement('canvas');
+			cv.width = w; cv.height = h;
+			var ctx = cv.getContext('2d', { willReadFrequently: true });
+			ctx.drawImage(img, 0, 0, w, h);
+			URL.revokeObjectURL(url);
+			var imgData = ctx.getImageData(0, 0, w, h);
+			var qr = window.jsQR(new Uint8ClampedArray(imgData.data), w, h);
+			if (!qr) { setHeightMsg('没识别到二维码，请上传清晰的二维码截图', true); return; }
+			var r = parseSkyQr(qr.data);
+			renderHeightResult(r);
+			setHeightMsg('');
+		} catch (e) {
+			setHeightMsg(e && e.message ? e.message : '解析失败，请确认是游戏内的外观二维码', true);
+		}
+	}
+
+	/* 入口卡片 */
+	function ensureHeightCard() {
+		var strip = document.querySelector('.guide-strip');
+		if (!strip || strip.querySelector('.sky-patch-height')) return;
+		if (strip.querySelectorAll('.guide-card').length < 5) return; // 等前面卡片就位
+		var card = el('uni-view', 'guide-card guide-idle sky-patch-height');
+		card.style.cssText = CARD_CSS;
+		var mark = el('uni-view', 'guide-mark');
+		mark.style.cssText = MARK_CSS;
+		var markTxt = el('uni-text', 'guide-mark-txt', '尺');
+		markTxt.style.cssText = MARK_TXT_CSS;
+		mark.appendChild(markTxt);
+		card.appendChild(mark);
+		var name = el('uni-text', 'guide-name', '身高扫码');
+		name.style.cssText = NAME_CSS;
+		card.appendChild(name);
+		var desc = el('uni-text', 'guide-desc', '扫外观码测身高');
+		desc.style.cssText = DESC_CSS;
+		card.appendChild(desc);
+		card.addEventListener('click', function (e) {
+			e.stopPropagation();
+			openHeight();
+		});
+		strip.appendChild(card);
+	}
+	setInterval(ensureHeightCard, 1500);
+	ensureHeightCard();
+
+
 	renderList();
 	updStat();
 })();
