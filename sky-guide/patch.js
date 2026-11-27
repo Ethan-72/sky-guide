@@ -864,7 +864,8 @@
 			html += '<div class="sky-gift-item' + (giftSel[g[0]] ? ' on' : '') +
 				'" data-n="' + escWing(g[0]) + '">' +
 				(g[3] ? '<img class="sky-gift-im" loading="lazy" src="' + BASE + '/img/gifts/' + escWing(g[3]) +
-					'" alt="" onerror="this.style.display=\'none\'">' : '') +
+					'" data-fb="' + escWing(g[4] || '') +
+					'" alt="" onerror="var f=this.dataset.fb;if(f){this.src=f;this.dataset.fb=\'\'}else{this.style.display=\'none\'}">' : '') +
 				'<span class="sky-gift-ck"></span>' +
 				'<span class="sky-gift-nm">' + escWing(g[0]) + '</span>' +
 				'<span class="sky-gift-pr">¥' + g[1] + '</span></div>';
