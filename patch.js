@@ -425,7 +425,8 @@
 		'.sky-wing-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}' +
 		'.sky-wing-title{font-size:16px;font-weight:600;letter-spacing:1px;color:var(--text)}' +
 		'.sky-wing-close{font-size:12px;color:var(--text-faint);padding:4px 8px;cursor:pointer}' +
-		'.sky-wing-hint{font-size:11px;line-height:1.6;color:var(--text-faint);margin-bottom:10px}' +
+		'.sky-wing-hint{font-size:11px;line-height:1.65;color:var(--text-faint);margin-bottom:10px;white-space:pre-line}' +
+		'.sky-wing-hint b{color:var(--accent);font-weight:600}' +
 		'.sky-wing-rowin{display:flex;gap:8px;align-items:center}' +
 		'.sky-wing-input{flex:1;min-width:0;height:38px;padding:0 12px;box-sizing:border-box;' +
 		'border-radius:12px;border:1px solid var(--glass-bd);background-color:var(--glass-bg-2);' +
@@ -473,13 +474,16 @@
 	var wingClose = el('div', 'sky-wing-close', '关闭');
 	wingHead.appendChild(wingTitle);
 	wingHead.appendChild(wingClose);
-	var wingHint = el('div', 'sky-wing-hint',
-		'优先填 9 位短 ID（游戏登录界面右上角可见）；32 位长 ID 部分账号接口暂不支持，可不带横杠。数据来自倾慕公益接口。');
+	var wingHint = el('div', 'sky-wing-hint');
+	wingHint.innerHTML =
+		'<b>怎么找短 ID：</b>游戏内点右上角小精灵 → 问「查询id」或「角色ID」，' +
+		'回复里的「短 ID」就是那 9 位数字，填它就行。\n' +
+		'长 ID（32 位）目前多数查不到，请用短 ID。数据来自倾慕公益接口。';
 	var wingRowIn = el('div', 'sky-wing-rowin');
 	var wingInput = document.createElement('input');
 	wingInput.className = 'sky-wing-input';
 	wingInput.type = 'text';
-	wingInput.placeholder = '粘贴 9 位短 ID / 32 位长 ID';
+	wingInput.placeholder = '填 9 位短 ID，如 491263205';
 	wingInput.setAttribute('autocomplete', 'off');
 	wingInput.setAttribute('spellcheck', 'false');
 	var wingBtn = document.createElement('button');
@@ -524,7 +528,7 @@
 		var name = el('uni-text', 'guide-name', '光翼查询');
 		name.style.cssText = NAME_CSS;
 		card.appendChild(name);
-		var desc = el('uni-text', 'guide-desc', '长 ID 查收集进度');
+		var desc = el('uni-text', 'guide-desc', '短 ID 查收集进度');
 		desc.style.cssText = DESC_CSS;
 		card.appendChild(desc);
 		card.addEventListener('click', function (e) {
@@ -614,7 +618,7 @@
 	async function queryWing() {
 		var id = normalizeWingId(wingInput.value);
 		if (!id) {
-			setWingMsg('ID 格式不对：请填 32 位长 ID 或 9 位角色 ID', true);
+			setWingMsg('ID 格式不对：请填 9 位数字短 ID（小精灵「查询id」里那个）', true);
 			return;
 		}
 		wingBtn.disabled = true;
@@ -628,7 +632,7 @@
 			var body = d && d.data;
 			if (!body || !body.stats || !(Number(body.stats.total_buffs) > 0)) {
 				setWingMsg(id.length > 9
-					? '这个长 ID 接口暂时没数据，请换 9 位短 ID 再试（登录界面右上角可见）'
+					? '长 ID 大多查不到，请用 9 位短 ID（小精灵「查询id」里的那个）'
 					: '没查到这个 ID 的数据，请确认短 ID 是否填对', true);
 				return;
 			}
