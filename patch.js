@@ -474,12 +474,12 @@
 	wingHead.appendChild(wingTitle);
 	wingHead.appendChild(wingClose);
 	var wingHint = el('div', 'sky-wing-hint',
-		'长 ID 在游戏内「设置 → 小精灵 → 查询 ID」获取（32 位，可不带横杠）；也支持 9 位角色 ID。数据来自倾慕公益接口。');
+		'优先填 9 位短 ID（游戏登录界面右上角可见）；32 位长 ID 部分账号接口暂不支持，可不带横杠。数据来自倾慕公益接口。');
 	var wingRowIn = el('div', 'sky-wing-rowin');
 	var wingInput = document.createElement('input');
 	wingInput.className = 'sky-wing-input';
 	wingInput.type = 'text';
-	wingInput.placeholder = '粘贴长 ID / 9 位角色 ID';
+	wingInput.placeholder = '粘贴 9 位短 ID / 32 位长 ID';
 	wingInput.setAttribute('autocomplete', 'off');
 	wingInput.setAttribute('spellcheck', 'false');
 	var wingBtn = document.createElement('button');
@@ -627,7 +627,9 @@
 			var d = await res.json();
 			var body = d && d.data;
 			if (!body || !body.stats || !(Number(body.stats.total_buffs) > 0)) {
-				setWingMsg('没查到这个 ID 的数据，请确认 ID 是否正确（长 ID 为 32 位）', true);
+				setWingMsg(id.length > 9
+					? '这个长 ID 接口暂时没数据，请换 9 位短 ID 再试（登录界面右上角可见）'
+					: '没查到这个 ID 的数据，请确认短 ID 是否填对', true);
 				return;
 			}
 			renderWing(body, d.query_time);
