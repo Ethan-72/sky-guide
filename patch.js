@@ -5,6 +5,8 @@
  * 本补丁以增量方式叠加新功能，不改产物本身：
  *   1. 全屏图片查看器支持双指缩放 / 单指拖动 / 双击放大（所有看图入口通用）
  *   2. 「更多攻略」末尾新增「日程家具」卡片（读取每日快照 schedule.json）
+ *   3. 复刻先祖：当天快照可用时覆盖滞后的接口数据
+ *   4. 光翼查询：输入长 ID / 9 位角色 ID，调用倾慕公益接口展示收集进度
  *
  * 由 index.html 引入，幂等（重复加载自动跳过）。
  */
@@ -382,4 +384,248 @@
 
 	// Vue 重渲染可能换掉卡片，持续兜底
 	setInterval(applyFuxianCard, 1500);
+
+	/* ==========================================================
+	   四、光翼查询
+	   数据源：倾慕公益 API https://api.qmkjcm.cn/api/gy/gycs/
+	   · 免密钥、CORS 全开，支持 32 位长 ID（必须带横杠）与 9 位角色 ID
+	   · 纯增量 DOM，不改线上既有构建产物
+	   ========================================================== */
+	var WING_API = 'https://api.qmkjcm.cn/api/gy/gycs/';
+
+	/* 32 位连写自动补横杠；9 位数字原样透传 */
+	function normalizeWingId(raw) {
+		var v = String(raw || '').trim().replace(/[\s-]/g, '');
+		if (!v) return null;
+		if (/^\d{9}$/.test(v)) return v;
+		if (/^[0-9a-fA-F]{32}$/.test(v)) {
+			v = v.toLowerCase();
+			return v.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+		}
+		return null;
+	}
+
+	function escWing(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+			return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+		});
+	}
+
+	var WING_CSS =
+		'.sky-wing-fab{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 182px);z-index:70;' +
+		'width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
+		'border:1px solid var(--glass-bd);background-color:var(--glass-bg);-webkit-backdrop-filter:blur(var(--blur));' +
+		'backdrop-filter:blur(var(--blur));box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hl);cursor:pointer;' +
+		'font-size:17px;font-weight:600;color:var(--text);transition:transform .16s ease}' +
+		'.sky-wing-fab:active{transform:scale(.94)}' +
+		'.sky-wing-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:95;display:none;' +
+		'align-items:flex-end;background-color:rgba(0,0,0,.48)}' +
+		'.sky-wing-mask.on{display:flex}' +
+		'.sky-wing-panel{display:flex;flex-direction:column;width:100%;max-height:86vh;overflow-y:auto;' +
+		'padding:10px 16px calc(20px + env(safe-area-inset-bottom));box-sizing:border-box;' +
+		'border-radius:22px 22px 0 0;border:1px solid var(--glass-bd);background-color:var(--glass-bg);' +
+		'background-image:linear-gradient(168deg,var(--glass-bg-2) 0%,rgba(255,255,255,0) 48%);' +
+		'-webkit-backdrop-filter:blur(var(--blur)) saturate(200%);backdrop-filter:blur(var(--blur)) saturate(200%);' +
+		'box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hl);color:var(--text)}' +
+		'.sky-wing-grip{width:36px;height:4px;margin:0 auto 10px;border-radius:99px;background-color:var(--text);opacity:.18}' +
+		'.sky-wing-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}' +
+		'.sky-wing-title{font-size:16px;font-weight:600;letter-spacing:1px;color:var(--text)}' +
+		'.sky-wing-close{font-size:12px;color:var(--text-faint);padding:4px 8px;cursor:pointer}' +
+		'.sky-wing-hint{font-size:11px;line-height:1.6;color:var(--text-faint);margin-bottom:10px}' +
+		'.sky-wing-rowin{display:flex;gap:8px;align-items:center}' +
+		'.sky-wing-input{flex:1;min-width:0;height:38px;padding:0 12px;box-sizing:border-box;' +
+		'border-radius:12px;border:1px solid var(--glass-bd);background-color:var(--glass-bg-2);' +
+		'color:var(--text);font-size:12px;outline:none}' +
+		'.sky-wing-btn{flex-shrink:0;height:38px;padding:0 16px;border-radius:12px;border:0;cursor:pointer;' +
+		'font-size:12px;font-weight:600;color:var(--btn-txt);background:linear-gradient(120deg,var(--btn-a),var(--btn-b))}' +
+		'.sky-wing-btn:disabled{opacity:.55;cursor:default}' +
+		'.sky-wing-msg{min-height:18px;margin:8px 2px 0;font-size:11px;line-height:1.6;color:var(--text-faint)}' +
+		'.sky-wing-msg.err{color:#FF8A8A}' +
+		'.sky-wing-result{display:none;margin-top:10px}' +
+		'.sky-wing-result.on{display:block}' +
+		'.sky-wing-hero{padding:14px;border-radius:16px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);text-align:center}' +
+		'.sky-wing-lv{font-size:11px;color:var(--text-dim)}' +
+		'.sky-wing-lvnum{font-size:34px;font-weight:700;line-height:1.25;color:var(--accent)}' +
+		'.sky-wing-count{font-size:12px;color:var(--text-dim)}' +
+		'.sky-wing-count b{font-size:19px;color:var(--text);font-weight:600}' +
+		'.sky-wing-chips{display:flex;gap:8px;margin-top:10px}' +
+		'.sky-wing-chip{flex:1;padding:9px 4px;border-radius:12px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);text-align:center}' +
+		'.sky-wing-chipv{display:block;font-size:15px;font-weight:600;color:var(--text)}' +
+		'.sky-wing-chipk{display:block;margin-top:2px;font-size:10px;color:var(--text-faint)}' +
+		'.sky-wing-sec{margin-top:14px;font-size:12px;font-weight:600;color:var(--text)}' +
+		'.sky-wing-line{display:flex;align-items:center;justify-content:space-between;margin-top:9px;font-size:11px;color:var(--text-dim)}' +
+		'.sky-wing-bar{height:5px;margin-top:5px;border-radius:99px;overflow:hidden;background-color:var(--line)}' +
+		'.sky-wing-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--btn-a),var(--btn-b))}' +
+		'.sky-wing-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}' +
+		'.sky-wing-tag{padding:3px 7px;border-radius:99px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);font-size:10px;color:var(--text-dim)}' +
+		'.sky-wing-foot{margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}' +
+		'.sky-wing-time{font-size:10px;color:var(--text-faint)}' +
+		'.sky-wing-copy{padding:5px 10px;border-radius:99px;border:1px solid var(--glass-bd);' +
+		'background-color:var(--glass-bg-2);font-size:10px;color:var(--accent);cursor:pointer}';
+
+	var wingStyle = document.createElement('style');
+	wingStyle.textContent = themeStyle(WING_CSS);
+	document.head.appendChild(wingStyle);
+
+	var wingRoot = el('div', 'sky-wing-root');
+	wingRoot.dataset.skyPatch = '1';
+	var wingFab = el('div', 'sky-wing-fab', '翼');
+	var wingMask = el('div', 'sky-wing-mask');
+	wingMask.dataset.skyPatch = '1';
+	var wingPanel = el('div', 'sky-wing-panel');
+	var wingGrip = el('div', 'sky-wing-grip');
+	var wingHead = el('div', 'sky-wing-head');
+	var wingTitle = el('div', 'sky-wing-title', '光翼查询');
+	var wingClose = el('div', 'sky-wing-close', '关闭');
+	wingHead.appendChild(wingTitle);
+	wingHead.appendChild(wingClose);
+	var wingHint = el('div', 'sky-wing-hint',
+		'长 ID 在游戏内「设置 → 小精灵 → 查询 ID」获取（32 位，可不带横杠）；也支持 9 位角色 ID。数据来自倾慕公益接口。');
+	var wingRowIn = el('div', 'sky-wing-rowin');
+	var wingInput = document.createElement('input');
+	wingInput.className = 'sky-wing-input';
+	wingInput.type = 'text';
+	wingInput.placeholder = '粘贴长 ID / 9 位角色 ID';
+	wingInput.setAttribute('autocomplete', 'off');
+	wingInput.setAttribute('spellcheck', 'false');
+	var wingBtn = document.createElement('button');
+	wingBtn.className = 'sky-wing-btn';
+	wingBtn.type = 'button';
+	wingBtn.textContent = '查询';
+	wingRowIn.appendChild(wingInput);
+	wingRowIn.appendChild(wingBtn);
+	var wingMsg = el('div', 'sky-wing-msg', '');
+	var wingResult = el('div', 'sky-wing-result');
+	wingPanel.appendChild(wingGrip);
+	wingPanel.appendChild(wingHead);
+	wingPanel.appendChild(wingHint);
+	wingPanel.appendChild(wingRowIn);
+	wingPanel.appendChild(wingMsg);
+	wingPanel.appendChild(wingResult);
+	wingMask.appendChild(wingPanel);
+	wingRoot.appendChild(wingFab);
+	wingRoot.appendChild(wingMask);
+	document.body.appendChild(wingRoot);
+
+	function openWing() {
+		wingStyle.textContent = themeStyle(WING_CSS); // 主题可能已切换，重新取值
+		wingMask.classList.add('on');
+		lockScroll(true);
+		try { wingInput.focus(); } catch (e) {}
+	}
+	function closeWing() {
+		wingMask.classList.remove('on');
+		lockScroll(false);
+	}
+	wingFab.addEventListener('click', openWing);
+	wingClose.addEventListener('click', closeWing);
+	wingMask.addEventListener('click', function (e) {
+		if (e.target === wingMask) closeWing();
+	});
+	wingPanel.addEventListener('touchmove', function (e) {
+		if (wingPanel.scrollHeight > wingPanel.clientHeight) return;
+		e.preventDefault();
+	}, { passive: false });
+
+	function setWingMsg(text, isErr) {
+		wingMsg.textContent = text || '';
+		wingMsg.className = 'sky-wing-msg' + (isErr ? ' err' : '');
+	}
+
+	function renderWing(body, queryTime) {
+		var stats = body.stats || {};
+		var total = Number(stats.total_buffs) || 0;
+		var got = Number(stats.collected) || 0;
+		var maps = (body.categories && body.categories.map) || {};
+		var spirits = (body.categories && body.categories.spirit) || [];
+		var spiritGot = 0;
+		for (var i = 0; i < spirits.length; i++) if (spirits[i] && spirits[i].collected) spiritGot++;
+
+		var html = '<div class="sky-wing-hero">' +
+			'<div class="sky-wing-lv">当前光翼等级</div>' +
+			'<div class="sky-wing-lvnum">' + escWing(stats.wing_level || 0) + '</div>' +
+			'<div class="sky-wing-count">已收集 <b>' + got + '</b> / ' + total + ' · 还差 ' + Math.max(0, total - got) + '</div></div>';
+
+		html += '<div class="sky-wing-chips">' +
+			'<div class="sky-wing-chip"><span class="sky-wing-chipv">' + (Number(stats.map_wings) || 0) + '</span><span class="sky-wing-chipk">地图光翼</span></div>' +
+			'<div class="sky-wing-chip"><span class="sky-wing-chipv">' + spiritGot + '/' + spirits.length + '</span><span class="sky-wing-chipk">先祖光翼</span></div>' +
+			'<div class="sky-wing-chip"><span class="sky-wing-chipv">' + (Number(stats.deposited) || 0) + '</span><span class="sky-wing-chipk">已存入</span></div>' +
+			'</div>';
+
+		html += '<div class="sky-wing-sec">各地图收集</div>';
+		Object.keys(maps).forEach(function (name) {
+			var m = maps[name] || {};
+			var t = Number(m.total) || 0;
+			var c = Number(m.collected) || 0;
+			var pct = t ? Math.round(c / t * 100) : 0;
+			html += '<div class="sky-wing-line"><span>' + escWing(name) + '</span><span>' + c + ' / ' + t + '</span></div>' +
+				'<div class="sky-wing-bar"><i style="width:' + pct + '%"></i></div>';
+		});
+
+		html += '<div class="sky-wing-sec">先祖光翼（接口原始标识）</div>';
+		var tags = [];
+		for (var j = 0; j < spirits.length; j++) {
+			if (spirits[j] && spirits[j].collected) {
+				tags.push(escWing(String(spirits[j].name || '').replace(/^s_/, '')));
+			}
+		}
+		html += '<div class="sky-wing-tags">' + (tags.length
+			? tags.map(function (t) { return '<span class="sky-wing-tag">' + t + '</span>'; }).join('')
+			: '<span class="sky-wing-tag">暂无已收集记录</span>') + '</div>';
+
+		html += '<div class="sky-wing-foot"><span class="sky-wing-time">查询于 ' + escWing(queryTime || '') +
+			'</span><span class="sky-wing-copy">复制摘要</span></div>';
+
+		wingResult.innerHTML = html;
+		wingResult.classList.add('on');
+		var copy = wingResult.querySelector('.sky-wing-copy');
+		if (copy) {
+			copy.addEventListener('click', function () {
+				var text = '光翼等级 ' + (stats.wing_level || 0) + ' · 已收集 ' + got + '/' + total +
+					' · 先祖 ' + spiritGot + '/' + spirits.length;
+				if (navigator.clipboard && navigator.clipboard.writeText) {
+					navigator.clipboard.writeText(text).then(function () {
+						copy.textContent = '已复制';
+						setTimeout(function () { copy.textContent = '复制摘要'; }, 1600);
+					}).catch(function () {});
+				}
+			});
+		}
+	}
+
+	async function queryWing() {
+		var id = normalizeWingId(wingInput.value);
+		if (!id) {
+			setWingMsg('ID 格式不对：请填 32 位长 ID 或 9 位角色 ID', true);
+			return;
+		}
+		wingBtn.disabled = true;
+		wingBtn.textContent = '查询中';
+		wingResult.classList.remove('on');
+		setWingMsg('正在读取光翼数据…');
+		try {
+			var res = await fetch(WING_API + '?id=' + encodeURIComponent(id) + '&format=json', { cache: 'no-store' });
+			if (!res.ok) throw new Error('http ' + res.status);
+			var d = await res.json();
+			var body = d && d.data;
+			if (!body || !body.stats || !(Number(body.stats.total_buffs) > 0)) {
+				setWingMsg('没查到这个 ID 的数据，请确认 ID 是否正确（长 ID 为 32 位）', true);
+				return;
+			}
+			renderWing(body, d.query_time);
+			setWingMsg('');
+		} catch (e) {
+			setWingMsg('网络异常或接口暂时不可用，请稍后再试', true);
+		} finally {
+			wingBtn.disabled = false;
+			wingBtn.textContent = '查询';
+		}
+	}
+	wingBtn.addEventListener('click', queryWing);
+	wingInput.addEventListener('keydown', function (e) {
+		if (e.key === 'Enter') queryWing();
+	});
 })();
