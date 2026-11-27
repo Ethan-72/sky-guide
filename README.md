@@ -1,73 +1,77 @@
-# 冰块
+# Sky Guide
 
-> **版权声明**：源码开放供学习与个人非商业使用；引用请保留署名与项目地址，禁止复制、二次分发及商用。详见 [LICENSE](LICENSE)。
+**English** | [简体中文](./README.zh-CN.md)
 
-《光·遇》每日任务与攻略工具，基于 uni-app（Vue 3 + Vite）开发，一套代码覆盖 H5 与微信小程序。按时间段自动切换日间 / 夜间主题和页面背景。非官方项目。
+> **License notice**: The source is open for study and personal, non-commercial use. Attribution and a link to this repository are required when referencing it. Copying, redistributing, or commercial use is not permitted. See [LICENSE](LICENSE) for details.
 
-在线演示：https://ethan-72.github.io/sky-guide/
+An unofficial daily-quest and guide companion for *Sky: Children of the Light*, built with uni-app (Vue 3 + Vite) from a single codebase that targets both the web and WeChat Mini Program. The UI switches between day and night themes, along with page backgrounds, based on the time of day.
 
-数据接口：
+Live demo: https://ethan-72.github.io/sky-guide/
 
-- 任务文字：`https://api.t1qq.com/api/sky/gyrw`
-- 攻略图：`https://api.t1qq.com/api/sky/sc/scrw`（返回 `image/png` 二进制流，可直接作为图片地址使用）
-- 明日任务：`https://api.qmkjcm.cn/api/gy_mr_rw/`
+Data sources:
 
-## 本地运行
+- Quest text: `https://api.t1qq.com/api/sky/gyrw`
+- Guide images: `https://api.t1qq.com/api/sky/sc/scrw` (returns `image/png` binary, usable directly as an image URL)
+- Tomorrow's quests: `https://api.qmkjcm.cn/api/gy_mr_rw/`
 
-环境要求：Node.js 18+、npm 9+。
+## Requirements
+
+Node.js 18+ and npm 9+.
+
+## Local development
 
 ```bash
 npm install
-npm run dev:h5      # H5 预览：http://127.0.0.1:5180/
+npm run dev:h5      # H5 preview: http://127.0.0.1:5180/
 ```
 
-项目源码平铺在根目录，而 uni-app CLI 默认读取 `src/`。所有命令通过 `scripts/run-uni.js` 设置 `UNI_INPUT_DIR`，请勿直接执行 `uni build`。
+The source files live in the repository root, while the uni-app CLI expects them under `src/`. Every script sets `UNI_INPUT_DIR` through `scripts/run-uni.js`, so run the npm scripts rather than calling `uni build` directly.
 
-## 构建
+## Building
 
 ```bash
-npm run build:h5              # H5
-npm run build:mp-weixin       # 微信小程序 → dist/build/mp-weixin
-npm run build:app             # App 资源
+npm run build:h5              # Web
+npm run build:mp-weixin       # WeChat Mini Program → dist/build/mp-weixin
+npm run build:app             # App resources
 ```
 
-安卓 APK 需通过 HBuilderX 云打包，需登录 DCloud 账号。
+Android APK builds require HBuilderX cloud packaging and a DCloud account.
 
-## 接口配置
+## API configuration
 
-接口基地址由 `VITE_API_BASE` 控制，默认为相对路径 `/api`：
+The API base URL is controlled by `VITE_API_BASE` and defaults to the relative path `/api`:
 
-- Vercel：`vercel.json` 中的 rewrites 将 `/api/:path*` 转发至 `https://api.t1qq.com/api/:path*`
-- 本地 H5：`vite.config.js` 的 server.proxy 配置相同的转发规则
-- GitHub Pages：无反向代理，构建时注入绝对地址 `https://api.t1qq.com/api`（接口支持跨域）
+- Vercel: `vercel.json` rewrites `/api/:path*` to `https://api.t1qq.com/api/:path*`
+- Local H5: the same rule is configured in `server.proxy` in `vite.config.js`
+- GitHub Pages: there is no reverse proxy, so the absolute address `https://api.t1qq.com/api` is injected at build time (the API supports cross-origin requests)
 
-## 部署
+## Deployment
 
 ### GitHub Pages
 
-项目页地址为 `/sky-guide/` 子路径，基路径与接口地址需特殊处理，已封装为以下两条命令：
+The project page is served from the `/sky-guide/` sub-path, so the base path and API address need special handling. Both are wrapped in the following commands:
 
 ```bash
 npm run build:h5:pages
-GH_TOKEN=gho_xxx npm run publish:pages   # 通过 GitHub API 推送至 gh-pages 分支
+GH_TOKEN=gho_xxx npm run publish:pages   # push to gh-pages through the GitHub API
 ```
 
-使用 API 推送是因为部分网络环境下 `github.com:443` 会被拦截（502），而 `api.github.com` 可正常访问。网络条件允许时，也可直接执行 `git push origin HEAD:gh-pages`。首次发布后，请在仓库 Settings → Pages 中确认来源为 `gh-pages` 分支根目录。
+The API-based publish exists because `github.com:443` is blocked in some network environments (502) while `api.github.com` remains reachable. Where the network allows it, `git push origin HEAD:gh-pages` works as well. After the first deployment, confirm under Settings → Pages that the source is the root of the `gh-pages` branch.
 
 ### Vercel
 
-导入 `Ethan-72/sky-guide`，`vercel.json` 已配置构建参数，直接部署：
+Import `Ethan-72/sky-guide`. `vercel.json` already contains the build settings:
 
-- Build Command：`npm run build:h5`
-- Output Directory：`dist/build/h5`
+- Build Command: `npm run build:h5`
+- Output Directory: `dist/build/h5`
 
-Vercel 环境应使用 `npm run build:h5`，而非 `build:h5:pages`。
+Use `npm run build:h5` on Vercel rather than `build:h5:pages`.
 
-## 微信小程序
+## WeChat Mini Program
 
-通过微信开发者工具导入 `dist/build/mp-weixin`。appid 配置于 `manifest.json`，域名校验已关闭（`manifest.json` 与 `project.config.json` 中的 `urlCheck` 均为 `false`）。非该 appid 开发者可使用「测试号」预览。
+Import `dist/build/mp-weixin` in WeChat DevTools. The appid is set in `manifest.json`, and domain checking is disabled (`urlCheck` is `false` in both `manifest.json` and `project.config.json`). Developers without access to that appid can preview with a test account.
 
-## 补充说明
+## Notes
 
-- 迁移项目时请勿复制 `node_modules`；保留 `package-lock.json`，在目标环境重新执行 `npm install`。
-- 更换 key 需修改 `pages/index/index.vue` 中的 `apiKey` / `scrwKey`。接口返回 403 表示 key 失效，429 表示请求频率过高。
+- When migrating the project, leave `node_modules` behind. Keep `package-lock.json` and run `npm install` in the target environment.
+- To change the API keys, edit `apiKey` and `scrwKey` in `pages/index/index.vue`. A 403 response means the key has expired; 429 means the request rate is too high.
