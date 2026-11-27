@@ -580,7 +580,8 @@
 			var t = Number(m.total) || 0;
 			var c = Number(m.collected) || 0;
 			var pct = t ? Math.round(c / t * 100) : 0;
-			html += '<div class="sky-wing-line"><span>' + escWing(name) + '</span><span>' + c + ' / ' + t + '</span></div>' +
+			var label = name === '其他地图' ? '永久翼' : name;
+			html += '<div class="sky-wing-line"><span>' + escWing(label) + '</span><span>' + c + ' / ' + t + '</span></div>' +
 				'<div class="sky-wing-bar"><i style="width:' + pct + '%"></i></div>';
 		});
 
