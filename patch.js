@@ -483,7 +483,7 @@
 	var wingInput = document.createElement('input');
 	wingInput.className = 'sky-wing-input';
 	wingInput.type = 'text';
-	wingInput.placeholder = '填 9 位短 ID，如 491263205';
+	wingInput.placeholder = '填 9 位数字短 ID';
 	wingInput.setAttribute('autocomplete', 'off');
 	wingInput.setAttribute('spellcheck', 'false');
 	var wingBtn = document.createElement('button');
